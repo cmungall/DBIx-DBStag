@@ -63,7 +63,7 @@ my $ss = <<EOM
    (name "dir")
    (table "person")))
  (top "mset")
- (path
+ (nesting
   (movie
    (dir 1)
    (character

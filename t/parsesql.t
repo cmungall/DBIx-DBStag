@@ -84,9 +84,46 @@ WHERE
   transcript.type = 'transcript' AND
   exon.type = 'exon' AND
   transcript.name = 'CG12345-RA';
-
        ];
     
     my $s = $dbh->parser->selectstmt($sql);
     print $s->sxpr; 
+    ok(1);
+}
+if (1) {
+    my $sql =
+      q[
+        SELECT 
+          F1.feature_id, F1.dbxrefstr, FL1.nbeg, FL1.nend
+        FROM 
+        feature AS F2 
+          INNER JOIN 
+        featureloc AS FL2 ON (F2.feature_id = FL2.feature_id),
+        feature AS F1 
+         INNER JOIN 
+        featureloc AS FL1 ON (F1.feature_id = FL1.feature_id) 
+        WHERE 
+        FL1.nbeg >= FL2.nbeg AND FL1.nend <= FL2.nend
+        and F2.feature_id = 47 and FL2.srcfeature_id =
+        FL1.srcfeature_id and F1.dbxrefstr != '';
+       ];
+#      q[
+#        SELECT 
+#          F1.feature_id, F1.dbxrefstr, FL1.nbeg, FL1.nend
+#        FROM 
+#        feature  F2 
+#          INNER JOIN 
+#        featureloc FL2 ON(F2.feature_id = FL2.feature_id),
+#        feature F1 
+#         INNER JOIN 
+#        featureloc FL1 ON (F1.feature_id = FL1.feature_id) 
+#        WHERE 
+#        FL1.nbeg >= FL2.nbeg AND FL1.nend <= FL2.nend
+#        and F2.feature_id = 47 and FL2.srcfeature_id =
+#        FL1.srcfeature_id and F1.dbxrefstr != '';
+#       ];
+    
+    my $s = $dbh->parser->selectstmt($sql);
+    print $s->sxpr; 
+    ok(1);
 }

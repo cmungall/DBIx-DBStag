@@ -56,7 +56,7 @@ my $ss = <<EOM
    (col "lname")
    (col "fname")))
  (top "mset")
- (path
+ (nesting
   (movie
    (dir 1)
    (character

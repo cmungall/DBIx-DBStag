@@ -56,7 +56,7 @@ my $ss = <<EOM
    (name "dir")
    (table "person")))
  (top "mset")
- (path
+ (nesting
   (movie
    (dir 1)
    (character
@@ -89,7 +89,7 @@ my $dirstruct =
                       -rows=>\@data,
                       -top=>"dirset",
                       -noaliases=>0,
-                      -path=>"'(dirset(dir(movie(star(character 1)))))");
+                      -nesting=>"'(dirset(dir(movie(star(character 1)))))");
 
 print $dirstruct->sxpr, "\n";
 my @dirs = $dirstruct->getnode_dir;
