@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.13 2003/08/20 19:21:50 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.14 2003/09/08 12:50:55 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -661,6 +661,10 @@ sub _parsefh {
 	    }
 	    $tag->{value} .= $_;
 	}
+    }
+    foreach (@tags) {
+	$_->{value} =~ s/^\s+//;
+	$_->{value} =~ s/\s+$//;
     }
     push(@tags, $tag);
     if (!defined($eosql_tag_idx)) {

@@ -1,4 +1,5 @@
-#$Id: Makefile.PL,v 1.4 2003/06/04 02:54:32 cmungall Exp $
+#$Id: Makefile.PL,v 1.5 2003/09/08 12:50:54 cmungall Exp $
+
 
 # This Makefile.PL was cut-n-pasted from the DBIx::Abstract
 # Nakefile.PL, by Andrew Turner <turnera@cpan.org>
