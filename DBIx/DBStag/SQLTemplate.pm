@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.16 2004/01/31 01:36:40 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.17 2004/02/27 17:14:54 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -116,6 +116,21 @@ sub properties {
     my $self = shift;
     $self->{_properties} = shift if @_;
     return $self->{_properties};
+}
+
+sub property_hash {
+    my $self = shift;
+    my $pl = $self->{_properties};
+    my %h = ();
+    foreach (@$pl) {
+	push(@{$h{$_->{name}}},$_->{value});
+    }
+    return \%h;
+}
+
+sub schema {
+    my $sl = shift->property_hash->{schema} || [];
+    $sl->[0];
 }
 
 sub stag_props {

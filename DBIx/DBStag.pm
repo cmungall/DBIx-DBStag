@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.19 2004/01/31 01:36:40 cmungall Exp $
+# $Id: DBStag.pm,v 1.20 2004/02/27 17:14:53 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -77,7 +77,35 @@ sub connect {
         bless $self, $class;
     }
     $dbi = $self->resolve_dbi($dbi);
-    $self->dbh(DBI->connect($dbi, @_));
+    eval {
+	$self->dbh(DBI->connect($dbi, @_));
+    };
+    if ($@ || !$self->dbh) {
+	my $mapf = $ENV{DBSTAG_DBIMAP_FILE};
+	print STDERR <<EOM
+
+Could not connect to database "$dbi"
+
+To connect to a database, you need to set the environment variable
+DBSTAG_DBIMAP_FILE to the location of your DBI Stag resources file, OR
+you need to specify the full dbi string of the database
+
+A dbi string looks like this:
+
+ dbi:Pg:dbname=foo;host=mypgserver.foo.com
+
+A resources file provides mappings from logical names like "foo" to
+full DBI locators suchas the one above
+
+Please type "man DBI" for more information on DBI strings
+
+If you are specifying a valid DBI locator or valid logical name and
+still connect, check the database server is responding
+
+EOM
+	  ;
+	exit 0;
+    }
     # HACK
     $self->dbh->{RaiseError} = 1;
     $self->dbh->{ShowErrorStatement} = 1;
@@ -124,8 +152,7 @@ sub resolve_dbi {
 	    }
 	}
 	else {
-	    $self->throw("$dbi is not a valid DBI locator.\n".
-			 "Maybe you do not have DBSTAG_DBIMAP_FILE set?\n");
+	    $self->throw("$dbi is not a valid DBI locator.\n");
 	}
     }
     return $dbi;
@@ -187,11 +214,43 @@ sub resources_list {
 sub find_template {
     my $self = shift;
     my $tname = shift;
-    my $path = $ENV{DBSTAG_TEMPLATE_DIRS} || '.';
+    my $path = $ENV{DBSTAG_TEMPLATE_DIRS} || '';
     my $tl = $self->template_list;
     my ($template, @rest) = grep {$tname eq $_->name} @$tl;
 
     if (!$template) {
+	print STDERR "\n\nI could not find the Stag SQL template called \"$tname\".\n";
+	if (!$path) {
+	    print STDERR <<EOM1
+
+In order to do use this or any other template, you need to set the environment
+variable DBSTAG_TEMPLATE_DIRS to the directory or a set of directories
+containing SQL templates. For example
+
+  setenv DBSTAG_TEMPLATE_DIRS=".:\$HOME/my-sql-templates:/usr/share/system-sql-templates"
+
+EOM1
+;
+	}
+	else {
+	    print STDERR <<EOM2
+
+I am looking in the following directories:
+
+  $path
+
+Check the contents of the directory to see if the stag sql template
+you require is there, and is readable by you. Stag SQL templates
+should end with the suffix ".stg"
+
+If you wish to search other directories, set the environment variable
+DBSTAG_TEMPLATE_DIRS, like this:
+
+  setenv DBSTAG_TEMPLATE_DIRS=".:\$HOME/my-sql-templates:$path"
+
+EOM2
+;
+	}
 	$self->throw("Could not find template \"$tname\" in: $path");
     }
     return $template;
@@ -2677,6 +2736,7 @@ sub selectgrammar {
          exprs: expr ',' exprs
          exprs: expr
 
+	   # bool_expr - eg in where clause
          bool_expr: not_bool_expr boolop bool_expr | not_bool_expr
          not_bool_expr: '!' brack_bool_expr | brack_bool_expr
          brack_bool_expr: '(' bool_expr ')' | bool_exprprim

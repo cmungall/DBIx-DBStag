@@ -9,11 +9,11 @@ use Getopt::Long;
 my $bindir = $ENV{DBSTAG_TEMPLATE_BINDIR};
 my $force;
 my $quiet;
-my $chmod = "+x";
+my $chmod = "777";
 GetOptions("bindir|b=s"=>\$bindir,
 	   "force"=>\$force,
 	   "quiet|q"=>\$quiet,
-	   "chmod"=>\$chmod,
+	   "chmod=s"=>\$chmod,
 	  );
 
 if (!$bindir) {
