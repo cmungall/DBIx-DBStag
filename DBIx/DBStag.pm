@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.28 2004/05/14 03:51:42 cmungall Exp $
+# $Id: DBStag.pm,v 1.29 2004/05/14 06:32:08 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -448,13 +448,21 @@ sub mapping {
 		  Data::Stag->nodify($_);
 	      }
 	      else {
-		  if (/(\w+)\/(\w+)\.(\w+)=(\w+)\.(\w+)/) {
+		  if (/^(\w+)\/(\w+)\.(\w+)=(\w+)\.(\w+)/) {
 		      Data::Stag->new(map=>[
 					    [fktable_alias=>$1],
 					    [table=>$2],
 					    [col=>$3],
 					    [fktable=>$4],
 					    [fkcol=>$5]
+					   ]);
+		  }
+		  elsif (/^(\w+)\.(\w+)=(\w+)\.(\w+)/) {
+		      Data::Stag->new(map=>[
+					    [table=>$1],
+					    [col=>$2],
+					    [fktable=>$3],
+					    [fkcol=>$4]
 					   ]);
 		  }
 		  else {
@@ -966,15 +974,13 @@ sub _storenode {
     my $self = shift;
     my $node = shift;
     my $element = $node->element;
-
-    my $nodename = $node->name;
-    trace(0, "STORING\n", $node->xml);
+    trace(0, "STORING $element\n", $node->xml);
     my $tracenode = $self->tracenode || '';
     my $tracekeyval;
     if ($tracenode && $tracenode =~ /^(\w+)\/(.*)/) {
         my $nn = $1;
         my $tag = $2;
-        if ($nn eq $nodename) {
+        if ($nn eq $element) {
             $tracekeyval = $node->get($2);
         }
     }
@@ -1313,12 +1319,12 @@ sub _storenode {
 
     if (%update_constr) {
         # ** UPDATE **
-        if ($self->noupdate_h->{$nodename}) {
+        if ($self->noupdate_h->{$element}) {
             if ($tracekeyval) {
                 printf STDERR "NOUPDATE: $tracenode = $tracekeyval\n"
             }
             trace(0, sprintf("NOUPDATE on %s OR child nodes (We have %s)",
-                             $nodename,
+                             $element,
                              join('; ',values %update_constr)
                             ));
             return $id;
@@ -1348,7 +1354,7 @@ sub _storenode {
             }
             else {
                 trace(0, sprintf("NOCHANGE on %s (We have %s)",
-                                 $nodename,
+                                 $element,
                                  join('; ',values %update_constr)
                             ));
                 if ($tracekeyval) {
@@ -1396,31 +1402,20 @@ sub _storenode {
     # any of these child nodes
     if (@delayed_store) {
         foreach my $sn (@delayed_store) {
-            my $fk = $pkcol;
-
             # ASSUMPTION - FK and PK are named the same
             # WRONG????????????????
+            my $fk = $pkcol;
+
+	    # HACK - specific to databases that use 'id' for PK
+	    # and <ftable>_id for FK
+	    if ($fk eq 'id') {
+		$fk = $element . '_id';
+	    }
+
             $sn->set($fk, $id);
 
             trace(0, "NOW TIME TO STORE [curr pk val = $id] [fkcol = $fk] ", $sn->xml);
             $self->_storenode($sn);
-
-#            my ($map) =
-#              grep { 
-#                  $_->get_table eq $sn->element &&
-#                    $_->get_fktable eq $element
-#                } @$mapping;
-#            if (!$map) {
-#                $map = Data::Stag->new(fk=>[
-#                                            [fktable=>
-#            }
-#            if ($map) {
-#                my $fktable = $map->get_fktable;
-#                my $fk = $pkcol;
-#                $sn->set($fk, $id);
-
-#                $self->_storenode($sn);
-#            }
         }
     } # -- end of @delayed_store
 

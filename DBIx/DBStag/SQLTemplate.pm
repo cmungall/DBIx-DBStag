@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.19 2004/04/02 21:12:26 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.20 2004/05/14 06:32:09 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -24,6 +24,12 @@ use Text::Balanced qw(extract_bracketed);
 use Parse::RecDescent;
 $VERSION='0.03';
 
+our @CLAUSE_ORDER = ('select',
+		     'from',
+		     'where',
+		     'group',
+		     'order',
+		     'having');
 
 sub DEBUG {
     $DBIx::DBStag::DEBUG = shift if @_;
@@ -94,10 +100,18 @@ sub set_clause {
 	$v = $1;
 	$add = 1;
     }
+    if ($ct eq 'order' || $ct eq 'group') {
+	$v = "BY $v" unless $add;
+    }
     my $is_set = 0;
     my $clauses = $self->sql_clauses;
+    
+    my @corder = @CLAUSE_ORDER;
+    my @nu_clauses = ();
     foreach my $clause (@$clauses) {
-	if (lc($clause->{name}) eq $ct) {
+	my $n = lc($clause->{name});
+	next unless $n;
+	if ($n eq $ct) {
 	    if ($add && $clause->{value}) {
 #		$clause->{value} .= " and $v";
 		$clause->{value} .= " $v";
@@ -107,7 +121,21 @@ sub set_clause {
 	    }
 	    $is_set = 1;
 	}
+      CORDER:
+	while (@corder) {
+	    my $next = $corder[0];
+	    if (!$is_set && $next eq $ct) {
+		$is_set = 1;
+		push(@nu_clauses,
+		     {name=>uc($ct),
+		      value=>$v});
+	    }
+	    last CORDER if $next eq $n;
+	    shift @corder;
+	}
+	push(@nu_clauses,$clause);
     }
+    @$clauses = @nu_clauses;
     $self->throw("Cannot set $ct") unless $is_set;
     return;
 }
@@ -217,122 +245,6 @@ sub get_example_input {
     }
     return \%ei;
 }
-
-
-##
-#sub zget_sql_and_args {
-#    my $self = shift;
-#    my $bind = shift;
-
-#    my @args = ();
-#    my %argh = ();
-
-#    if ($bind &&
-#	ref($bind) eq 'HASH') {
-#	%argh = %$bind;
-#    }
-#    if ($bind &&
-#	ref($bind) eq 'ARRAY') {
-#	@args = @$bind;
-#    }
-
-#    my $sql_clauses = $self->sql_clauses;
-#    my $sql = '';
-
-#    foreach my $clause (@$sql_clauses) {
-#	my ($n, $v) = ($clause->{name}, $clause->{value});
-#	trace "N=$n; V=$v\n";
-#	if (lc($n) eq 'where') {
-#	    my $vari = 0;
-#	    my %vari_by_name = ();
-#	    my $sub =
-#	      sub {
-#		  my $str = shift;
-#		  my $is_set = 1;
-#		  while ($str =~ /(=>)?\s*\&(\w+)\&/) {
-#		      my $op = $1 || '';
-#		      my $varname = $2;
-#		      $is_set = 0;
-#		      if (%argh) {
-#			  my $argval = $argh{$varname};
-#			  if (!exists $argh{$varname}) {
-##			      $self->throw("not set $varname");
-#			  }
-#			  else {
-#			      $args[$vari] = $argval;
-#			      $is_set = 1;
-#			  }
-#		      }
-		      
-#		      if (@args > $vari) {
-#			  $is_set = 1;
-#		      }
-#		      # if var appears twice, it is already bound
-#		      if (@args <= $vari &&
-#			  defined($vari_by_name{$varname})) {
-#			  $args[$vari] =
-#			    $args[$vari_by_name{$varname}];
-#		      }
-#		      push(@{$vari_by_name{$varname}}, $vari);
-
-#		      if ($is_set) {
-#			  my $val = $args[$vari];
-#			  if ($op) {
-#			      $op = '= ';
-#			      if ($val =~ /\%/) {
-#				  $op = ' like ';
-#			      }
-#			  }
-#			  if (ref($val)) {
-#			      my $vals =
-#				join(',',
-#				     map {$self->dbh->quote($_)} @$val);
-#			      $str =~ s/(=>)?\s*\&$varname\&/ in \($vals\)/;
-#			  }
-#			  else {
-#			      $str =~ s/(=>)?\s*\&$varname\&/$op\?/;
-#			      $vari++;
-#			  }
-#		      }
-#		      else {
-#			  $str = '';
-#		      }
-#		  }
-#		  return $str;
-#	      };
-#	    my @constrs = ();
-#	    while (1) {
-#		my ($extracted, $remainder, $skip) =
-#		  extract_bracketed($v, '[]');
-#		print "($extracted, $remainder, $skip)\n";
-#		$remainder =~ s/^\s+//;
-#		$remainder =~ s/\s+$//;
-#		$skip =~ s/^\s+//;
-#		$skip =~ s/\s+$//;
-		
-#		push(@constrs,
-#		     $sub->($skip));
-#		if ($extracted) {
-#		    $extracted =~ s/^\s*\[//;
-#		    $extracted =~ s/\]\s*$//;
-#		    push(@constrs,
-#			 $sub->($extracted));
-#		}
-#		else {
-#		    push(@constrs,
-#			 $sub->($remainder));
-#		    last;
-#		}
-#		$v = $remainder;
-#	    }
-#	    @constrs = grep {$_} @constrs;
-#	    $v = join(' AND ', @constrs);
-#            trace(0, join(';', @constrs));
-#	}
-#	$sql .= "$n $v\n";
-#    }
-#    return ($sql, @args);
-#}
 
 
 
