@@ -103,6 +103,8 @@ foreach my $fn (@ARGV) {
         }
     }
     else {
+        # if no load units are specified, store everything
+        # nested one-level below top
         $H = Data::Stag->makehandler;
         $H->catch_end_sub(sub {
                               my ($handler,$stag) = @_;
@@ -188,6 +190,13 @@ the DB
 If this flag is present, the values for primary key values are
 trusted; otherwise they are assumed to be surrogate internal IDs that
 should not be used. In this case they will be remapped.
+
+=head1 XML TO DB MAPPING
+
+See L<DBIx::DBStag> for details of the actual mapping. Two styles of
+mapping are allowed: stag-dbxml and XORT-style XML. You do not have to
+specify which, they are sufficiently similar that the loader can
+accept either.
 
 =head1 MAKING DATABASE FROM XML FILES
 
@@ -283,6 +292,9 @@ You generally dont need extra metadata here; everything can be
 infered by introspecting the database.
 
 The -u|unit switch controls when transactions are committed
+
+You can omit the -u switch, and every node directly under the top node
+will be stored. This will also be the transaction unit.
 
 If this works, you should now be able to retreive XML from the database, eg
 

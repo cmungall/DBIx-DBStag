@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.41 2005/03/07 23:00:40 cmungall Exp $
+# $Id: DBStag.pm,v 1.42 2005/03/11 02:12:24 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -391,7 +391,6 @@ sub parser {
 
 sub warn {
     my $self = shift;
-    my $p = shift;
     my $fmt = shift;
 
     print STDERR "\nWARNING:\n";
@@ -1850,7 +1849,7 @@ sub _storenode {
     elsif ($operation eq 'lookup') {
         # lookup: do nothing, already have ID
         if (!$id) {
-            $self->throw("lookup: no ID;; could not find this node in db:\n".$node->xml);
+            $self->throw("lookup: no ID; could not find this node in db %s:\n",$node->xml);
         }
     }
     else {
@@ -1900,11 +1899,12 @@ sub _storenode {
     if ($current_attribute_node) {
         if ($id) {
             my $macro_id = $current_attribute_node->sget_id;
-            if (!$macro_id) {
-                $self->warn("attribute node without ID:".$current_attribute_node->sxpr);
+            if ($macro_id) {
+                $self->macro_id_h->{$macro_id} = $id;
+                trace(0, "SETTING MACRO ID MAP: $macro_id => $id") if $TRACE;
             }
-            $self->macro_id_h->{$macro_id} = $id;
-            trace(0, "SETTING MACRO ID MAP: $macro_id => $id") if $TRACE;
+            else {
+            }
         }
     }
 
