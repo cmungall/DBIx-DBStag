@@ -20,6 +20,7 @@ my @noupdate = ();
 my $tracenode;
 my $transform;
 my $trust_ids;
+my $autocommit;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
@@ -31,6 +32,7 @@ GetOptions(
            "tracenode=s"=>\$tracenode,
            "transform|t=s"=>\$transform,
            "trust_ids=s"=>\$trust_ids,
+           "autocommit"=>\$autocommit,
           );
 if ($help) {
     system("perldoc $0");
@@ -40,7 +42,7 @@ if ($help) {
 #print STDERR "Connecting to $db\n";
 my $dbh = DBIx::DBStag->connect($db);
 eval {
-    $dbh->dbh->{AutoCommit} = 0;
+    $dbh->dbh->{AutoCommit} = $autocommit || 0;
 };
 if ($@) {
     print STDERR $@;
@@ -64,7 +66,8 @@ sub store {
     my $stag = shift;
     #$dbh->begin_work;
     $dbh->storenode($stag);
-    $dbh->commit;
+    $dbh->commit
+      unless $autocommit;
     return;
 }
 
@@ -101,7 +104,8 @@ foreach my $fn (@ARGV) {
         push(@pargs, -handler=>$thandler) if $thandler;
 	$stag = Data::Stag->parse(@pargs);
 	$dbh->storenode($stag);
-	$dbh->commit;
+	$dbh->commit
+          unless $autocommit;
     }
 #    my @kids = $stag->kids;
 #    foreach (@kids) {
