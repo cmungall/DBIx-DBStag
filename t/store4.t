@@ -7,7 +7,7 @@ BEGIN {
     eval { require Test; };
     use Test;    
     use DBStagTest;
-    plan tests => 2;
+    plan tests => 4;
 }
 use DBIx::DBStag;
 use DBI;
@@ -61,6 +61,7 @@ my $dbh = connect_to_cleandb();
 #DBI->trace(1);
 
 $dbh->do($ddl);
+$dbh->trust_primary_key_values(1);
 
 $dbh->guess_mapping;
 
@@ -90,6 +91,8 @@ $dbh->storenode($joe);
 $rset = $dbh->selectall_stag(@q
                             );
 $joe = $rset->getnode_person;
+my @addresses = $joe->get_address;
+ok(@addresses == 2);
 ok($joe->sgetnode_address->sget_addressline eq $NEW_ADDRESS);
 
 $joe->unset_person_id;
@@ -102,6 +105,17 @@ $rset = $dbh->selectall_stag(@q
                             );
 $joe = $rset->getnode_person;
 print $joe->sxpr, "\n";
-ok($joe->sgetnode_address->sget_addressline eq $OLD_ADDRESS);
+ok($joe->sget_address->sget_addressline eq $OLD_ADDRESS);
 
+$rset = $dbh->selectall_stag(@q
+                               );
+print $rset->sxpr;
+$joe = $rset->getnode_person;
+$joe->set_lname('bliggs');
+$dbh->storenode($joe);
+
+$rset = $dbh->selectall_stag(@q
+                            );
+print $rset->sxpr;
+ok($rset->get_person->get_lname eq 'bliggs');
 $dbh->disconnect;

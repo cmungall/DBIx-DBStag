@@ -19,6 +19,7 @@ my $mapconf;
 my @noupdate = ();
 my $tracenode;
 my $transform;
+my $trust_ids;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
@@ -29,6 +30,7 @@ GetOptions(
            "noupdate=s@"=>\@noupdate,
            "tracenode=s"=>\$tracenode,
            "transform|t=s"=>\$transform,
+           "trust_ids=s"=>\$trust_ids,
           );
 if ($help) {
     system("perldoc $0");
@@ -39,6 +41,9 @@ if ($help) {
 my $dbh = DBIx::DBStag->connect($db);
 $dbh->dbh->{AutoCommit} = 0;
 
+if ($trust_ids) {
+    $dbh->trust_primary_key_values(1);
+}
 if ($mapconf) {
     $dbh->mapconf($mapconf);
 }
@@ -150,6 +155,12 @@ on the stag events/XML. See also L<stag-handle.pl>
 A comma-seperated (no spaces) list of nodes/elements on which no
 update should be performed if a unique key is found to be present in
 the DB
+
+=head3 -trust_ids
+
+If this flag is present, the values for primary key values are
+trusted; otherwise they are assumed to be surrogate internal IDs that
+should not be used. In this case they will be remapped.
 
 =head1 MAKING DATABASE FROM XML FILES
 
