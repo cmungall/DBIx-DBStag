@@ -128,10 +128,12 @@ my $debug;
 my $help;
 my $db;
 my $unit;
+my $parser;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
 	   "unit|u=s"=>\$unit,
+           "parser|p=s"=>\$parser,
           );
 if ($help) {
     system("perldoc $0");
@@ -152,10 +154,10 @@ foreach my $fn (@ARGV) {
 					    $dbh->commit;
 					    return;
 					});
-	Data::Stag->parse(-file=>$fn, -handler=>$H);
+	Data::Stag->parse(-format=>$parser,-file=>$fn, -handler=>$H);
     }
     else {
-	my $stag = Data::Stag->parse($fn);
+	my $stag = Data::Stag->parse(-format=>$parser,-file=>$fn);
 	$dbh->storenode($stag);
 	$dbh->commit;
     }

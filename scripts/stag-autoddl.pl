@@ -14,7 +14,40 @@ stag-autoddl.pl
 
 script wrapper for the Data::Stag modules
 
-=head1 ARGUMENTS
+=over ARGUMENTS
+
+=item -help|h
+
+shows this document
+
+=item -p|parser FORMAT
+
+FORMAT is one of xml, sxpr or itext, or the name of a perl module
+
+xml assumed as default
+
+=item -w|writer FORMAT
+
+FORMAT is one of xml, sxpr or itext, or the name of a perl module
+
+This is only used if transforms are required on the data to turn it
+into relational form; the transformed xml (or other stag format) is
+stored in the file specified by -t
+
+=item -link|l NODE_NAME
+
+this node name will be used as a linking table
+
+multiple linking nodes can be set:
+
+ -l foo2bar -l x2y -l bim2bum
+
+
+=item -t TRANSFORMED_FILE_NAME
+
+the transformed input file is written here
+
+=back
 
 =cut
 

@@ -194,7 +194,7 @@ sub ubiq {
 	(hr,
 	 href('http://stag.sourceforge.net'),
 	 br,
-	 myfont('$Id: ubiq.cgi,v 1.7 2004/03/19 01:05:38 cmungall Exp $x',
+	 myfont('$Id: ubiq.cgi,v 1.8 2004/04/12 18:23:10 cmungall Exp $x',
 		(size=>-2)),
 	);
     };				# end of sub: footer
@@ -551,6 +551,7 @@ sub ubiq {
 		"for template attributes.",
 		"The character '*' gets treated as a wildcard.",
 	       ),
+	      
 	      p("You can now choose a format for the results.",
 		"Most of the formats are ", strong("hierarchical."),
 		"if a hierarchical format is selected, then UBIQ will",
@@ -566,6 +567,12 @@ sub ubiq {
 	      p(em("Note"), "As yet, UBIQ has no means of prioritising queries,",
 		"it is possible to launcg queries that put a large load on the",
 		"server, please be careful"),
+	      p(
+		"If you receive an internal server error it probably means your query was terminated",
+		"because it was not fully constrained. If this happens, pass in more constraints.",
+		"DO NOT keep hitting reload - this will cause the database server to slow down.",
+		"If this service becomes overloaded, it will have to be removed"
+		),
 	      
 	      h3("Advanced use"),
 	      p("Yes, a SOAP interface would be nice. No plans as yet.",
@@ -687,6 +694,12 @@ sub ubiq {
                 $errmsg = h2("No Query Constraints Set");
             }
             else {
+		# kill killer queries
+		my $tag = "kill$$"."TAG";
+		my $tagf = "/tmp/$tag";
+		my $t=time;
+		print STDERR "Launched killer $tagf at $t\n";
+		system("touch $tagf && chmod 777 $tagf && sleep 15 && test -f $tagf && kill -9 $$ && rm $tagf &");
                 if (is_format_flat) {
                     $rows =
                       $dbh->selectall_rows(
@@ -701,6 +714,10 @@ sub ubiq {
                                            -nesting=>$nesting,
                                           );
                 }
+		# inactivate killer (killer only kills if $tagf is present)
+		$t=time;
+		print STDERR "Inactivated killer $tagf at $t\n";
+		system("rm $tagf &");
             }
 	};
 	if ($@) {

@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.24 2004/04/02 21:12:25 cmungall Exp $
+# $Id: DBStag.pm,v 1.25 2004/04/12 18:23:07 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -693,7 +693,7 @@ sub _autoddl {
             grep {$_ eq $tbl} @$link) {
             my $ftbl = $_->element;
             push(@cols,
-                 sprintf("%s_id int", $ftbl));
+                 sprintf("%s_id INT", $ftbl));
             push(@cols,
                  sprintf("FOREIGN KEY (%s_id) REFERENCES $ftbl(%s_id)$casc", $ftbl, $ftbl));
             $pre_ddl .= $self->_autoddl($_, undef, $link, $tbls);
@@ -2649,7 +2649,7 @@ sub selectgrammar {
                      [expr => $item[1]]
                     ]) }
            | <error>
-         funccall: funcname '(' selectcols ')' 
+         funccall: funcname '(' distinct(?) selectcols ')' 
            {
             my $col = N(col=>[
                               [func => [
@@ -2661,6 +2661,8 @@ sub selectgrammar {
             $col;
            }
            | <error>
+
+         distinct: /distinct/i
 
 	 operator: '+' | '-' | '*' | '/' | '||'
 	   
