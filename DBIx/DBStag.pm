@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.33 2004/09/08 00:08:36 cmungall Exp $
+# $Id: DBStag.pm,v 1.34 2004/09/22 16:42:23 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -22,7 +22,7 @@ use DBIx::DBSchema;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
-$VERSION="0.04";
+$VERSION="0.05";
 
 
 our $DEBUG;
@@ -1495,6 +1495,7 @@ sub _storenode {
                 if ($tracekeyval) {
                     printf STDERR "UPDATE: $tracenode = $tracekeyval\n"
                 }
+
                 $self->updaterow($element,
                                  \%store_hash,
                                  \%unique_constr);
@@ -2662,14 +2663,15 @@ sub insertrow {
     my ($table, $colvalh, $pkcol) = @_;
       
     my @cols = keys %$colvalh;
+    my @vals = 
+      map {
+          defined($_) ? $self->quote($colvalh->{$_}) : 'NULL'
+      } @cols;
     my $sql =
       sprintf("INSERT INTO %s (%s) VALUES (%s)",
               $table,
               join(", ", @cols),
-              join(", ",
-                   map {
-                       defined($_) ? $self->quote($colvalh->{$_}) : 'NULL'
-                   } @cols),
+              join(", ", @vals),
              );
     if (!@cols) {
 	$sql = "INSERT INTO $table DEFAULT VALUES";
@@ -2682,7 +2684,7 @@ sub insertrow {
     if ($@) {
 	if ($self->force) {
 	    # what about transactions??
-	    $self->warn("WARNING: $@");
+	    $self->warn("IN SQL: $sql\nWARNING: $@");
 	}
 	else {
 	    confess $@;
@@ -2742,7 +2744,7 @@ sub updaterow {
             $set =
               [
                map {
-                   push(@bind, $set->{$_});
+                   push(@bind, defined $set->{$_} ? $set->{$_} : 'NULL');
                    "$_ = ?"
                } keys %$set
               ];
@@ -2758,7 +2760,7 @@ sub updaterow {
               join(', ', @$set),
               join(' AND ', @$where),
              );
-    trace(0, "SQL:$sql [@bind]");
+    trace(0, "SQL:$sql [",join(', ',@bind)."]");
 
     my $sth = $dbh->prepare($sql) || confess($sql."\n\t".$dbh->errstr);
     return $sth->execute(@bind) || confess($sql."\n\t".$sth->errstr);
