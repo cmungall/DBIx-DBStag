@@ -27,6 +27,17 @@ my @order;
 my $color;
 my $out;
 my $sgml;
+
+# cmd line interpreter gets rid of quotes; need to use backspace
+my @ARGV2 = ();
+while (my $arg = shift @ARGV) {
+    while (substr($arg,-1) eq '\\' && @ARGV) {
+	my $next = shift @ARGV;
+	substr($arg,-1,1," $next");
+    }
+    push(@ARGV2,$arg);
+}
+@ARGV = @ARGV2;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
@@ -47,7 +58,6 @@ GetOptions(
 	   "out|o=s"=>\$out,
 	   "trace"=>\$ENV{DBSTAG_TRACE},
           );
-
 @ARGV = map { if (/^\/(.*)/) {$template_name=$1;()} else {$_} } @ARGV;
 
 
