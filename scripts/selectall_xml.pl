@@ -214,21 +214,20 @@ eval {
 	    }
 	    $count++;
 	}
-        
-	$dbh->disconnect;	
-	exit 0;
-    }
-    my $fh;
-    if ($out) {
-	my $fh = FileHandle->new(">$out") || die "cannot write to $out";
-	$H->fh($fh);
     }
     else {
-	$H->fh(\*STDOUT);
+        my $fh;
+        if ($out) {
+            my $fh = FileHandle->new(">$out") || die "cannot write to $out";
+            $H->fh($fh);
+        }
+        else {
+            $H->fh(\*STDOUT);
+        }
+        my $stag = $dbh->selectall_stag(@sel_args);
+        $stag->events($H);
+        $fh->close if $fh;
     }
-    my $stag = $dbh->selectall_stag(@sel_args);
-    $stag->events($H);
-    $fh->close if $fh;
 };
 if ($@) {
     print "FAILED\n$@";

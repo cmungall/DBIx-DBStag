@@ -1,5 +1,108 @@
 #!/usr/local/bin/perl -w
 
+# POD docs at end
+
+use strict;
+
+use Carp;
+use Data::Stag;
+use DBIx::DBStag;
+use Getopt::Long;
+
+my $debug;
+my $help;
+my $db;
+my @units;
+my $parser;
+my @mappings;
+my $mapconf;
+my @noupdate = ();
+my $tracenode;
+my $transform;
+GetOptions(
+           "help|h"=>\$help,
+	   "db|d=s"=>\$db,
+	   "unit|u=s@"=>\@units,
+           "parser|p=s"=>\$parser,
+	   "mapping|m=s@"=>\@mappings,
+	   "conf|c=s"=>\$mapconf,
+           "noupdate=s@"=>\@noupdate,
+           "tracenode=s"=>\$tracenode,
+           "transform|t=s"=>\$transform,
+          );
+if ($help) {
+    system("perldoc $0");
+    exit 0;
+}
+
+#print STDERR "Connecting to $db\n";
+my $dbh = DBIx::DBStag->connect($db);
+$dbh->dbh->{AutoCommit} = 0;
+
+if ($mapconf) {
+    $dbh->mapconf($mapconf);
+}
+if (@mappings) {
+    $dbh->mapping(\@mappings);
+}
+@noupdate = map {split(/\,/,$_)} @noupdate;
+$dbh->noupdate_h({map {$_=>1} @noupdate});
+$dbh->tracenode($tracenode) if $tracenode;
+
+sub store {
+    my $self = shift;
+    my $stag = shift;
+    #$dbh->begin_work;
+    $dbh->storenode($stag);
+    $dbh->commit;
+    return;
+}
+
+my $thandler;
+if ($transform) {
+    $thandler = Data::Stag->makehandler($transform);
+}
+
+foreach my $fn (@ARGV) {
+    if ($fn eq '-' && !$parser) {
+	$parser = 'xml';
+    }
+    if (@units) {
+        my $H;
+	my $storehandler = Data::Stag->makehandler(
+                                                   map {
+                                                       $_ =>sub{store(@_)};
+                                                   } @units
+                                                  );
+        if ($thandler) {
+            $H = Data::Stag->chainhandlers([@units],
+                                           $thandler,
+                                           $storehandler);
+        }
+        else {
+            $H = $storehandler;
+        }
+        Data::Stag->parse(-format=>$parser,-file=>$fn, -handler=>$H);
+    }
+    else {
+        print STDERR "WARNING! Slurping whole file into memory may be inefficient; consider -u\n";
+        my $stag;
+        my @pargs = (-format=>$parser,-file=>$fn);
+        push(@pargs, -handler=>$thandler) if $thandler;
+	$stag = Data::Stag->parse(@pargs);
+	$dbh->storenode($stag);
+	$dbh->commit;
+    }
+#    my @kids = $stag->kids;
+#    foreach (@kids) {
+#        $dbh->storenode($_);
+#    }
+}
+$dbh->disconnect;
+exit 0;
+
+__END__
+
 =head1 NAME 
 
 stag-storenode.pl
@@ -13,6 +116,40 @@ stag-storenode.pl
 This script is for storing data (specified in a nested file format
 such as XML or S-Expressions) in a database. It assumes a database
 schema corresponding to the tags in the input data already exists.
+
+=head2 ARGUMENTS
+
+=head3 -d B<DBNAME>
+
+This is either a DBI locator or the logical name of a database in the
+DBSTAG_DBIMAP_FILE config file
+
+=head3 -u B<UNIT>
+
+This is the node/element name on which to load; a database loading
+event will be fired every time one of these elements is parsed; this
+also constitutes a whole transaction
+
+=head3 -c B<STAGMAPFILE>
+
+This is a stag mapping file, indicating which elements are aliases
+
+=head3 -p B<PARSER>
+
+Default is xml; can be any stag compatible parser, OR a perl module
+which will parse the input file and fire stag events (see
+L<Data::Stag::BaseGenerator>)
+
+=head3 -t B<TRANSFORMER>
+
+This is the name of a perl module that will perform a transformation
+on the stag events/XML. See also L<stag-handle.pl>
+
+=head3 -noupdate B<NODELIST>
+
+A comma-seperated (no spaces) list of nodes/elements on which no
+update should be performed if a unique key is found to be present in
+the DB
 
 =head1 MAKING DATABASE FROM XML FILES
 
@@ -116,74 +253,3 @@ If this works, you should now be able to retreive XML from the database, eg
 =cut
 
 
-
-use strict;
-
-use Carp;
-use Data::Stag;
-use DBIx::DBStag;
-use Getopt::Long;
-
-my $debug;
-my $help;
-my $db;
-my @units;
-my $parser;
-my @mappings;
-my $mapconf;
-GetOptions(
-           "help|h"=>\$help,
-	   "db|d=s"=>\$db,
-	   "unit|u=s@"=>\@units,
-           "parser|p=s"=>\$parser,
-	   "mapping|m=s@"=>\@mappings,
-	   "conf|c=s"=>\$mapconf,
-          );
-if ($help) {
-    system("perldoc $0");
-    exit 0;
-}
-
-#print STDERR "Connecting to $db\n";
-my $dbh = DBIx::DBStag->connect($db);
-$dbh->dbh->{AutoCommit} = 0;
-
-if ($mapconf) {
-    $dbh->mapconf($mapconf);
-}
-if (@mappings) {
-    $dbh->mapping(\@mappings);
-}
-
-sub store {
-    my $self = shift;
-    my $stag = shift;
-    #$dbh->begin_work;
-    $dbh->storenode($stag);
-    $dbh->commit;
-    return;
-}
-
-foreach my $fn (@ARGV) {
-    if ($fn eq '-' && !$parser) {
-	$parser = 'xml';
-    }
-    if (@units) {
-	my $H = Data::Stag->makehandler(
-					map {
-					    $_ =>sub{store(@_)};
-					} @units
-				       );
-	Data::Stag->parse(-format=>$parser,-file=>$fn, -handler=>$H);
-    }
-    else {
-	my $stag = Data::Stag->parse(-format=>$parser,-file=>$fn);
-	$dbh->storenode($stag);
-	$dbh->commit;
-    }
-#    my @kids = $stag->kids;
-#    foreach (@kids) {
-#        $dbh->storenode($_);
-#    }
-}
-$dbh->disconnect;

@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.27 2004/04/30 19:37:29 cmungall Exp $
+# $Id: DBStag.pm,v 1.28 2004/05/14 03:51:42 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -857,6 +857,17 @@ sub policy_freshbulkload {
     $self->{_policy_freshbulkload} = shift if @_;
     return $self->{_policy_freshbulkload};
 }
+sub noupdate_h {
+    my $self = shift;
+    $self->{_noupdate_h} = shift if @_;
+    return $self->{_noupdate_h} || {};
+}
+sub tracenode {
+    my $self = shift;
+    $self->{_tracenode} = shift if @_;
+    return $self->{_tracenode};
+}
+
 sub mapgroups {
     my $self = shift;
     if (@_) {
@@ -956,7 +967,17 @@ sub _storenode {
     my $node = shift;
     my $element = $node->element;
 
+    my $nodename = $node->name;
     trace(0, "STORING\n", $node->xml);
+    my $tracenode = $self->tracenode || '';
+    my $tracekeyval;
+    if ($tracenode && $tracenode =~ /^(\w+)\/(.*)/) {
+        my $nn = $1;
+        my $tag = $2;
+        if ($nn eq $nodename) {
+            $tracekeyval = $node->get($2);
+        }
+    }
 
     my $dbh = $self->dbh;
     my $dbschema = $self->dbschema;
@@ -1047,13 +1068,12 @@ sub _storenode {
             }
             $node->set($col, $fk_id);
             $node->unset($orig_nt->element);
-            trace(0, $node->xml);
         }
         else {
             # 1:many between child and this
             # (eg child has fk to this)
             # store child after
-            trace(0, "DELAYED STORE:\n", $nt->xml);
+            trace(0, "WILL STORE LATER:\n", $nt->xml);
             $node->unset($nt->element);
             push(@delayed_store, $nt);
         }
@@ -1182,13 +1202,20 @@ sub _storenode {
         # we already know & have the primary key
         last if %update_constr;
 
+        # if we are loading up a fresh/blank slate
+        # database then we don't need to check for
+        # existing tuples, as everything should
+        # have been inserted/updated this session
+        if ($self->policy_freshbulkload) {
+            next;
+        }
+
         # already tried PK
 #        if (scalar(@$uset) == 1 && 
 #            $uset->[0] eq $pkcol) {
 #            next;
 #        }
         trace(0, "TRYING USET: @$uset;; [pk=$pkcol]");
-        trace(0, $node->xml);
 
         # get the values of the unique key columns
         my %constr =
@@ -1237,17 +1264,13 @@ sub _storenode {
                 if ($pkcol) {
                     $id = $cached_colvals{$pkcol};
                 }
+                if ($tracekeyval) {
+                    printf STDERR "IGNORING CACHED: $tracenode = $tracekeyval\n"
+                }
                 return $id;
             }
         }
         
-        # if we are loading up a fresh/blank slate
-        # database then we don't need to check for
-        # existing tuples, as everything should
-        # have been inserted/updated this session
-        if ($self->policy_freshbulkload) {
-            next;
-        }
 
         # we have a suitable unique key - all the
         # column/attribute values are set in this
@@ -1281,7 +1304,7 @@ sub _storenode {
             # ignore any other unique keys
             last;
         }
-    }
+    } # -- end of @usets loop
 
     # ---- UPDATE OR INSERT -----
     # at this stage we know if we are updating
@@ -1289,33 +1312,52 @@ sub _storenode {
     # update constraint has been found
 
     if (%update_constr) {
-
         # ** UPDATE **
-
-        # if there are no fields modified,
-        # no change
-        foreach (keys %update_constr) {
-            # no point setting any column
-            # that is part of the update constraint
-            delete $store_hash{$_};
-        } 
-
-        if (%store_hash) {
-            $self->updaterow($element,
-                             \%store_hash,
-                             \%update_constr);
-            # -- CACHE RESULTS --
-            if ($is_caching_on) {
-                $self->update_cache($element,
-                                    \%store_hash,
-                                    \%update_constr);
+        if ($self->noupdate_h->{$nodename}) {
+            if ($tracekeyval) {
+                printf STDERR "NOUPDATE: $tracenode = $tracekeyval\n"
+            }
+            trace(0, sprintf("NOUPDATE on %s OR child nodes (We have %s)",
+                             $nodename,
+                             join('; ',values %update_constr)
+                            ));
+            return $id;
+        }
+        else {
+            # if there are no fields modified,
+            # no change
+            foreach (keys %update_constr) {
+                # no point setting any column
+                # that is part of the update constraint
+                delete $store_hash{$_};
+            } 
+            
+            if (%store_hash) {
+                if ($tracekeyval) {
+                    printf STDERR "UPDATE: $tracenode = $tracekeyval\n"
+                }
+                $self->updaterow($element,
+                                 \%store_hash,
+                                 \%update_constr);
+                # -- CACHE RESULTS --
+                if ($is_caching_on) {
+                    $self->update_cache($element,
+                                        \%store_hash,
+                                        \%update_constr);
+                }
+            }
+            else {
+                trace(0, sprintf("NOCHANGE on %s (We have %s)",
+                                 $nodename,
+                                 join('; ',values %update_constr)
+                            ));
+                if ($tracekeyval) {
+                    printf STDERR "NOCHANGE: $tracenode = $tracekeyval\n"
+                }
             }
         }
-
     } else {
-
         # ** INSERT **
-
         $id =
           $self->insertrow($element,
                            \%store_hash,
@@ -1338,8 +1380,8 @@ sub _storenode {
                                      \%cache_hash);
         }
 
-    }
-
+    }  # -- end of UPDATE/INSERT
+    
 
     # -- DELAYED STORE --
     # Any non-terminal child nodes of the current one have
@@ -1380,7 +1422,8 @@ sub _storenode {
 #                $self->_storenode($sn);
 #            }
         }
-    }
+    } # -- end of @delayed_store
+
     return $id;
 }
 
@@ -3273,8 +3316,7 @@ The schema for the resulting Stag structures can be seen to conform to
 a schema that is dynamically determined at query-time from the
 underlying relational schema and from the specification of the query itself.
 
-=head1 CLASS METHODS
-
+=head1 QUERY METHODS
 
 =head2 connect
 
@@ -3371,13 +3413,38 @@ Returns a hashref
 
 =cut
 
+=head1 STORAGE METHODS
+
 =head2 storenode
 
   Usage   - $dbh->storenode($stag);
   Returns - 
   Args    - L<Data::Stag>
 
-Recursively stores a tree structure in the database
+Recursively stores a stag tree structure in the database.
+
+The database schema is introspected for most of the mapping data.
+
+Before a node is stored, certain subnodes will be pre-stored; these are
+subnodes for which there is a foreign key mapping FROM the parent node
+TO the child node. This pre-storage is recursive.
+
+After these nodes are stored, the current node is either INSERTed or
+UPDATEd. The database is introspected for UNIQUE constraints; these
+are used as keys. If there exists a row in the database with matching
+key, then the node is UPDATEd; otherwise it is INSERTed.
+
+(primary keys from pre-stored nodes become foreign key values in the
+existing node)
+
+Subsequently, all subnodes that were not pre-stored are now
+post-stored.  The primary key for the existing node will become
+foreign keys for the post-stored subnodes.
+
+Before storage, all node names are made dbsafe; they are lowercased,
+and the following transform is applied:
+
+  tr/a-z0-9_//cd;
 
 =head2 mapping
 
@@ -3385,7 +3452,30 @@ Recursively stores a tree structure in the database
   Returns - 
   Args    - array
 
-creates a stag-relational mapping (for storing data only)
+Creates a stag-relational mapping (for storing data only)
+
+Occasionally not enough information can be obtained from db
+introspection; you can provide extra mapping data this way.
+
+Occasionally you stag objects/data/XML will contain aliases that do
+not correspond to actual SQL relations; the aliases are intermediate
+nodes that provide information on which foreign key column to use
+
+For example, with data like this:
+
+  (person
+   (name "...")
+   (favourite_film
+    (film (....))
+   (least_favourite_film
+    (film (....)))))
+
+There may only be two SQL tables: person and film; person would have
+two foreign key columns into film. The mapping may look like this
+
+  ["favourite_film/person.favourite_film_id=film.film_id",
+   "least_favourite_film/person.least_favourite_film_id=film.film_id"]
+
 
 =head2 mapconf
 
@@ -3394,6 +3484,24 @@ creates a stag-relational mapping (for storing data only)
   Args    - filename
 
 sets the conf file containing the stag-relational mappings
+
+See mapping() above
+
+The file contains line like:
+
+  favourite_film/person.favourite_film_id=film.film_id
+  least_favourite_film/person.least_favourite_film_id=film.film_id
+
+=head2 noupdate_h
+
+  Usage   - $dbh->noupdate_h({person=>1})
+  Returns - 
+  Args    - hashref
+
+Keys of hash are names of nodes that do not get updated - if a unique
+key is queried for and does not exist, the node will be inserted and
+subnodes will be stored; if the unique key does exist in the db, then
+this will not be updated; subnodes will not be stored
 
 =cut
 
