@@ -38,6 +38,7 @@ my $user;
 my $pass;
 my $template;
 my $where;
+my $select;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
@@ -48,6 +49,7 @@ GetOptions(
 	   "pass|p=s"=>\$pass,
 	   "template|t=s"=>\$template,
 	   "where|w=s"=>\$where,
+	   "select|s=s"=>\$select,
           );
 if ($help) {
     system("perldoc $0");
@@ -81,6 +83,9 @@ if ($template) {
       DBIx::DBStag->find_template($template);
     if ($where) {
 	$template->set_clause(where => $where);
+    }
+    if ($select) {
+	$template->set_clause(select => $select);
     }
 
     my @args = ();
