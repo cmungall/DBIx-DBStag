@@ -165,7 +165,7 @@ if ($template) {
 	$template->set_clause(select => $select);
     }
     if (@order) {
-	$template->set_clause(order => join(", ",@order);
+	$template->set_clause('order by' => join(", ",@order));
     }
 
     my @args = ();
