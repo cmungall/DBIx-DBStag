@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.5 2003/05/24 00:33:23 cmungall Exp $
+# $Id: DBStag.pm,v 1.6 2003/05/27 06:48:38 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -151,7 +151,7 @@ sub resources_hash {
 sub resources_list {
     my $self = shift;
     my $rh =
-      $self->resources_hashh;
+      $self->resources_hash;
     my $rl;
     if ($rh) {
 	$rl =
@@ -164,23 +164,45 @@ sub find_template {
     my $self = shift;
     my $tname = shift;
     my $path = $ENV{DBSTAG_TEMPLATE_DIRS} || '.';
-    my @dirs = split(/:/, $path);
-    my $template;
-  FIND:
-    foreach my $dir (@dirs) {
-	foreach my $fn ("$dir/$tname.stg", "$dir/$tname") {
-	    if (-f $fn) {
-		require "DBIx/DBStag/SQLTemplate.pm";
-		$template = DBIx::DBStag::SQLTemplate->new;
-		$template->parse($fn);
-		last FIND;
-	    }
-	}
-    }
+    my $tl = $self->template_list;
+    my ($template, @rest) = grep {$tname eq $_->name} @$tl;
+
     if (!$template) {
 	$self->throw("Could not find template \"$tname\" in: $path");
     }
     return $template;
+}
+
+sub find_templates_by_schema {
+    my $self = shift;
+    my $schema = shift;
+    my $tl = $self->template_list;
+    my @templates = grep {$_->{schema} &&
+                            $schema eq $_->{schema}} @$tl;
+
+    return \@templates;
+}
+
+sub template_list {
+    my $self = shift;
+    if (!$self->{_template_list}) {
+        my $path = $ENV{DBSTAG_TEMPLATE_DIRS} || '.';
+        my @dirs = split(/:/, $path);
+        my @templates = ();
+
+        foreach my $dir (@dirs) {
+            foreach my $fn (glob("$dir/*.stg")) {
+                if (-f $fn) {
+                    require "DBIx/DBStag/SQLTemplate.pm";
+                    my $template = DBIx::DBStag::SQLTemplate->new;
+                    $template->parse($fn);
+                    push(@templates, $template);
+                }
+            }
+        }
+        $self->{_template_list} = \@templates;
+    }
+    return $self->{_template_list};
 }
 
 sub find_schema {

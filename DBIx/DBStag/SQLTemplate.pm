@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.2 2003/05/24 00:33:25 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.3 2003/05/27 06:48:38 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -18,6 +18,7 @@ use Carp;
 use DBI;
 use Data::Stag qw(:all);
 use DBIx::DBStag;
+use DBIx::DBStag::Constraint;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
@@ -50,6 +51,19 @@ sub new {
     $self->cached_sth({});
     $self;
 }
+
+sub name {
+    my $self = shift;
+    $self->{_name} = shift if @_;
+    return $self->{_name};
+}
+
+sub fn {
+    my $self = shift;
+    $self->{_fn} = shift if @_;
+    return $self->{_fn};
+}
+
 
 sub sth {
     my $self = shift;
@@ -135,117 +149,325 @@ sub properties {
 # if the foo variable contains an ARRAY it will be IN
 #
 # (See DBI manpage for discussion of placeholders)
-#
+##
+#sub zget_sql_and_args {
+#    my $self = shift;
+#    my $bind = shift;
+
+#    my @args = ();
+#    my %argh = ();
+
+#    if ($bind &&
+#	ref($bind) eq 'HASH') {
+#	%argh = %$bind;
+#    }
+#    if ($bind &&
+#	ref($bind) eq 'ARRAY') {
+#	@args = @$bind;
+#    }
+
+#    my $sql_clauses = $self->sql_clauses;
+#    my $sql = '';
+
+#    foreach my $clause (@$sql_clauses) {
+#	my ($n, $v) = ($clause->{name}, $clause->{value});
+#	trace "N=$n; V=$v\n";
+#	if (lc($n) eq 'where') {
+#	    my $vari = 0;
+#	    my %vari_by_name = ();
+#	    my $sub =
+#	      sub {
+#		  my $str = shift;
+#		  my $is_set = 1;
+#		  while ($str =~ /(=>)?\s*\&(\w+)\&/) {
+#		      my $op = $1 || '';
+#		      my $varname = $2;
+#		      $is_set = 0;
+#		      if (%argh) {
+#			  my $argval = $argh{$varname};
+#			  if (!exists $argh{$varname}) {
+##			      $self->throw("not set $varname");
+#			  }
+#			  else {
+#			      $args[$vari] = $argval;
+#			      $is_set = 1;
+#			  }
+#		      }
+		      
+#		      if (@args > $vari) {
+#			  $is_set = 1;
+#		      }
+#		      # if var appears twice, it is already bound
+#		      if (@args <= $vari &&
+#			  defined($vari_by_name{$varname})) {
+#			  $args[$vari] =
+#			    $args[$vari_by_name{$varname}];
+#		      }
+#		      push(@{$vari_by_name{$varname}}, $vari);
+
+#		      if ($is_set) {
+#			  my $val = $args[$vari];
+#			  if ($op) {
+#			      $op = '= ';
+#			      if ($val =~ /\%/) {
+#				  $op = ' like ';
+#			      }
+#			  }
+#			  if (ref($val)) {
+#			      my $vals =
+#				join(',',
+#				     map {$self->dbh->quote($_)} @$val);
+#			      $str =~ s/(=>)?\s*\&$varname\&/ in \($vals\)/;
+#			  }
+#			  else {
+#			      $str =~ s/(=>)?\s*\&$varname\&/$op\?/;
+#			      $vari++;
+#			  }
+#		      }
+#		      else {
+#			  $str = '';
+#		      }
+#		  }
+#		  return $str;
+#	      };
+#	    my @constrs = ();
+#	    while (1) {
+#		my ($extracted, $remainder, $skip) =
+#		  extract_bracketed($v, '[]');
+#		print "($extracted, $remainder, $skip)\n";
+#		$remainder =~ s/^\s+//;
+#		$remainder =~ s/\s+$//;
+#		$skip =~ s/^\s+//;
+#		$skip =~ s/\s+$//;
+		
+#		push(@constrs,
+#		     $sub->($skip));
+#		if ($extracted) {
+#		    $extracted =~ s/^\s*\[//;
+#		    $extracted =~ s/\]\s*$//;
+#		    push(@constrs,
+#			 $sub->($extracted));
+#		}
+#		else {
+#		    push(@constrs,
+#			 $sub->($remainder));
+#		    last;
+#		}
+#		$v = $remainder;
+#	    }
+#	    @constrs = grep {$_} @constrs;
+#	    $v = join(' AND ', @constrs);
+#            trace(0, join(';', @constrs));
+#	}
+#	$sql .= "$n $v\n";
+#    }
+#    return ($sql, @args);
+#}
+
 sub get_sql_and_args {
     my $self = shift;
-    my $bind = shift;
+    my $bind = shift || {};
 
-    my @args = ();
+    my $where_blocks = $self->split_where_clause;
+    my $varnames = $self->get_varnames; # ORDERED list of variables in Q
+
     my %argh = ();
+    my ($sql, @args);
+    my $where;
 
+    # binding can be a simple array of VARVALs
+    if ($bind &&
+	ref($bind) eq 'ARRAY') {
+
+        # assume that the order of arguments specified is
+        # the same order that appears in the query
+        for (my $i=0; $i<@$bind; $i++) {
+            $argh{$varnames->[$i]} = $bind->[$i];
+        }
+    }
     if ($bind &&
 	ref($bind) eq 'HASH') {
 	%argh = %$bind;
     }
-    if ($bind &&
-	ref($bind) eq 'ARRAY') {
-	@args = @$bind;
+    if (%argh) {
+        # simple rules for substituting variables
+        ($where, @args) = $self->_get_sql_where_and_args_from_hashmap(\%argh);
     }
+    else {
+        # COMPLEX BOOLEAN CONSTRAINTS
+        my $constr;
+        $constr = $bind;
+        ($where, @args) = $self->_get_sql_where_and_args_from_constraints($constr);
+    }
+    
+    my $sql_clauses = $self->sql_clauses;
+    $sql = join("\n",
+                map {
+                    if (lc($_->{name}) eq 'where') {
+                        "WHERE $where";
+                    }
+                    else {
+                        "$_->{name} $_->{value}";
+                    }
+                } @$sql_clauses);
+    return ($sql, @args);
+}
 
+# takes a simple set of hash variable bindings, and
+# a set of option blocks [...][...]
+#
+# generates SQL for every block required, replaces with
+# DBI placeholders, and returns SQL plus DBI execute args list
+sub _get_sql_where_and_args_from_hashmap {
+    my $self = shift;
+    my %argh = %{shift || {}};
+
+    my $where_blocks = $self->split_where_clause;
+
+    # sql clauses to be ANDed
+    my @sqls = ();
+
+    # args to be fed to DBI execute() [corresponds to placeholder ?s]
+    my @args = ();
+
+    # index of variables replaced by ?s
+    my $vari = 0;
+
+  NEXT_BLOCK:
+    foreach my $wb (@$where_blocks) {
+        my $where = $wb->{text};
+        my $varnames = $wb->{varnames};
+        
+        my $str = $where;
+        while ($str =~ /(=>)?\s*\&(\w+)\&/) {
+            my $op = $1 || '';
+            my $varname = $2;
+
+            my $argval = $argh{$varname};
+            if (!exists $argh{$varname}) {
+                next NEXT_BLOCK;
+            }
+                
+                
+            if ($op) {
+                $op = '= ';
+                if ($argval =~ /\%/) {
+                    $op = ' like ';
+                }
+            }
+            my $replace_with;
+            # replace arrays with IN (1,2,3,...)
+            if (ref($argval)) {
+                $replace_with =
+                  join(',',
+                       map {$self->dbh->quote($_)} @$argval);
+                $op = ' in ';
+            }
+            else {
+                $replace_with = '?';
+                $args[$vari] = $argval;
+                $vari++;
+            }
+            $str =~ s/(=>)?\s*\&$varname\&/$op$replace_with/;
+        }
+        push(@sqls, $str);
+    }
+    my $sql = join(' AND ', @sqls);
+    trace(0, "WHERE:$sql");
+    return ($sql, @args);
+}
+
+# takes complex boolean constraints and generates SQL
+sub _get_sql_where_and_args_from_constraints {
+    my $self = shift;
+    my $constr = shift;
+
+    if ($constr->is_leaf) {
+        my $where_blocks = $self->split_where_clause;
+        die("TODO");
+    }
+    else {
+        my $bool = $constr->bool;
+        my $children = $constr->children;
+        my @all_args = ();
+        my @sqls = ();
+        foreach my $child (@$children) {
+            my ($sql, @args) = $self->_get_sql_where_and_args($constr);            
+            push(@sqls, $sql);
+            push(@all_args, @args);
+        }
+        my $sql = '('.join(" $bool ",
+                           @sqls).')';
+        return ($sql, @all_args);
+    }
+    $self->throw("ASSERTION ERROR");
+}
+
+
+# splits a WHERE clause with option blocks [ x=&x& ] [ y=&y& and z=&z& ] into
+# blocks, and attaches the variable names to the block
+sub split_where_clause {
+    my $self = shift;
     my $sql_clauses = $self->sql_clauses;
     my $sql = '';
 
-    foreach my $clause (@$sql_clauses) {
-	my ($n, $v) = ($clause->{name}, $clause->{value});
-	trace "N=$n; V=$v\n";
-	if (lc($n) eq 'where') {
-	    my $vari = 0;
-	    my %vari_by_name = ();
-	    my $sub =
-	      sub {
-		  my $str = shift;
-		  my $is_set = 1;
-		  while ($str =~ /(=>)?\s*\&(\w+)\&/) {
-		      my $op = $1 || '';
-		      my $varname = $2;
-		      $is_set = 0;
-		      if (%argh) {
-			  my $argval = $argh{$varname};
-			  if (!exists $argh{$varname}) {
-#			      $self->throw("not set $varname");
-			  }
-			  else {
-			      $args[$vari] = $argval;
-			      $is_set = 1;
-			  }
-		      }
-		      
-		      if (@args > $vari) {
-			  $is_set = 1;
-		      }
-		      # if var appears twice, it is already bound
-		      if (@args <= $vari &&
-			  defined($vari_by_name{$varname})) {
-			  $args[$vari] =
-			    $args[$vari_by_name{$varname}];
-		      }
-		      push(@{$vari_by_name{$varname}}, $vari);
+    my ($clause) = grep {lc($_->{name}) eq 'where'} (@$sql_clauses);
+    my $where = $clause->{value} || '';
 
-		      if ($is_set) {
-			  my $val = $args[$vari];
-			  if ($op) {
-			      $op = '= ';
-			      if ($val =~ /\%/) {
-				  $op = ' like ';
-			      }
-			  }
-			  if (ref($val)) {
-			      my $vals =
-				join(',',
-				     map {$self->dbh->quote($_)} @$val);
-			      $str =~ s/(=>)?\s*\&$varname\&/ in \($vals\)/;
-			  }
-			  else {
-			      $str =~ s/(=>)?\s*\&$varname\&/$op\?/;
-			      $vari++;
-			  }
-		      }
-		      else {
-			  $str = '';
-		      }
-		  }
-		  return $str;
-	      };
-	    my @constrs = ();
-	    while (1) {
-		my ($extracted, $remainder, $skip) =
-		  extract_bracketed($v, '[]');
-		print "($extracted, $remainder, $skip)\n";
-		$remainder =~ s/^\s+//;
-		$remainder =~ s/\s+$//;
-		
-		push(@constrs,
-		     $sub->($skip));
-		if ($extracted) {
-		    $extracted =~ s/^\s*\[//;
-		    $extracted =~ s/\]\s*$//;
-		    push(@constrs,
-			 $sub->($extracted));
-		}
-		else {
-		    push(@constrs,
-			 $sub->($remainder));
-		    last;
-		}
-		$v = $remainder;
-	    }
-	    @constrs = grep {$_} @constrs;
-	    $v = join(' AND ', @constrs);
+    my $vari = 0;
+    my %vari_by_name = ();
+    my $sub =
+      sub {
+          my $textin = shift;
+          return unless $textin;
+          my $str = $textin;
 
-	}
-	$sql .= "$n $v\n";
+          my @varnames = ();
+          while ($str =~ /(=>)?\s*\&(\w+)\&/) {
+              my $op = $1 || '';
+              my $varname = $2;
+              push(@varnames, $varname);
+              $str =~ s/(=>)?\s*\&$varname\&//;
+          }
+          return
+            {text=>$textin,
+             varnames=>\@varnames}
+        };
+    my @constrs = ();
+    while (1) {
+        my ($extracted, $remainder, $skip) =
+          extract_bracketed($where, '[]');
+        $extracted ||= '';
+        $remainder ||= '';
+        trace(0, "($extracted, $remainder, $skip)\n");
+        $remainder =~ s/^\s+//;
+        $remainder =~ s/\s+$//;
+        $skip =~ s/^\s+//;
+        $skip =~ s/\s+$//;
+        
+        push(@constrs,
+             $sub->($skip));
+        if ($extracted) {
+            $extracted =~ s/^\s*\[//;
+            $extracted =~ s/\]\s*$//;
+            push(@constrs,
+                 $sub->($extracted));
+        }
+        else {
+            push(@constrs,
+                 $sub->($remainder));
+            last;
+        }
+        $where = $remainder;
     }
-    return ($sql, @args);
+    @constrs = grep {$_} @constrs;
+    return \@constrs;
+}
+
+sub get_varnames {
+    my $self = shift;
+    my $parts = $self->split_where_clause;
+    return [map {@{$_->{varnames}}} @$parts];
 }
 
 sub prepare {
@@ -265,6 +487,12 @@ sub parse {
     my $self = shift;
     my $fn = shift;
     my $fh = FileHandle->new($fn) || $self->throw("cannot open $fn");
+    $self->fn($fn);
+    my $name = $fn;
+    $name =~ s/.*\///;
+    $name =~ s/\.\w+$//;
+    $self->name($name);
+
     my $eosql_tag_idx;
     my $tag = {name=>'', value=>''};
     my @tags = ();

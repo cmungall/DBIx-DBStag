@@ -80,7 +80,7 @@ my $xml;
 my @sel_args = ($sql, $nesting);
 if ($template) {
     $template =
-      DBIx::DBStag->find_template($template);
+      DBIx::DBStag->new->find_template($template);
     if ($where) {
 	$template->set_clause(where => $where);
     }
