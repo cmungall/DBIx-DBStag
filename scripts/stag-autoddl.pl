@@ -68,11 +68,11 @@ sub autoddl {
     my $ddl = $db->autoddl($tree, \@link);
     my $transforms = $db->source_transforms;
     if (@$transforms) {
+	foreach (@$transforms) {
+	    print STDERR "-- SOURCE REQUIRES TRANSFORM: $_->[0] => $_->[1]\n";
+	}
 	if (!$ofn) {
 	    print STDERR "-- $fn requires transforms; consider running with -transform\n";
-	    foreach (@$transforms) {
-		print STDERR "-- SOURCE REQUIRES TRANSFORM: $_->[0] => $_->[1]\n";
-	    }
 	}
 	else {
 	    $tree->transform(@$transforms);

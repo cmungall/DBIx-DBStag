@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.14 2003/09/08 12:50:55 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.15 2003/11/11 03:54:59 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -51,15 +51,6 @@ sub new {
     $self->cached_sth({});
     $self;
 }
-
-
-=head2 name
-
-  Usage   -
-  Returns -
-  Args    -
-
-=cut
 
 sub name {
     my $self = shift;
@@ -806,10 +797,12 @@ __END__
 
 =head1 SYNOPSIS
 
-  $template = $dbh->find_template("mydb-myquery");
+  # find template by name
+  $template = $dbh->find_template("mydb-personq");
+
+  # execute this template, filling in the 'name' attribute
   $xml = $dbh->selectall_xml(-template=>$template, 
                              -bind=>{name => "fred"});
- 
 
 =cut
 
@@ -824,10 +817,21 @@ To tell DBStag where your templates are, you should set:
 
   setenv DBSTAG_TEMPLATE_DIRS "$HOME/mytemplates:/data/bioconf/templates"
 
-Your templates should end with the suffix .stg
+Your templates should end with the suffix B<.stg>, otherwise they will
+not be picked up
+
+You can name templates any way you like, but the standard way is to
+use 2 or 3 fields
+
+  SCHEMA-OBJECT
+
+or
+
+  SCHEMA-OBJECT-QUALIFIERS
+
+(with underscores used within fields)
 
 A template file should contain at minimum some SQL; for example:
-
 
 =over
 
@@ -848,10 +852,7 @@ A template file should contain at minimum some SQL; for example:
 
 Thats all! However, there are ways to make your template more useful
 
-
 =item Example template 2
-
-
 
   :SELECT 
                studio.*,
@@ -867,14 +868,23 @@ Thats all! However, there are ways to make your template more useful
   :USE NESTING (set(studio(movie(star))))
 
   //
+  schema: movie
   desc: query for fetching movies
 
-By including :s at the beginning it makes it easier for parsers to
+By including B<:> at the beginning it makes it easier for parsers to
 assemble SQL (this is not necessary for DBStag however)
 
 After the // you can add tag: value data.
 
+You should set B<schema:> if you want the template to be available to
+users of a db that conforms to that schema
+
 =back
+
+=head2 GETTING A TEMPLATE
+
+The L<DBIx::DBStag> object gives various methods for fetching
+templates by name, by database or by schema
 
 =head2 VARIABLES
 
@@ -901,7 +911,10 @@ they are found
 
 If foo is not bound then the part between the square brackets is left out
 
-Multiple option blocks are ANDed together
+Multiple option blocks are B<AND>ed together
+
+An option block need not contain a variable - if it contains no
+B<&variable&> name it is automatically B<AND>ed
 
 =head2 BINDING OPERATORS
 
@@ -926,11 +939,32 @@ to an ARRAY
 
 =head1 METHODS
 
+
+=head2 name
+
+  Usage   - $name = $template->name
+  Returns - str
+  Args    -
+
+every template has a name that (should) uniquely identify it
+
+=head2 desc
+
+  Usage   - $desc = $template->desc
+  Returns - str
+  Args    -
+
+templates have optional descriptions
+
+=cut
+
 =head2 get_varnames
 
-  Usage   -
-  Returns -
-  Args    -
+  Usage   - $varnames = $template->get_varnames
+  Returns - listref of strs
+  Args    - 
+
+Returns the names of all variable used in this template
 
 =cut
 

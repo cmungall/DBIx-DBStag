@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.17 2003/09/09 14:49:00 cmungall Exp $
+# $Id: DBStag.pm,v 1.18 2003/11/11 03:54:59 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -587,7 +587,7 @@ sub _autoddl {
         }
         if ($card =~ /[\+\*]/) {
 	    my $new_name =  sprintf("%s_%s", $tbl, $col);
-	    my $tf = [$col, "$new_name/$col"];
+	    my $tf = ["$tbl/$col", "$new_name/$col"];
 	    push(@{$self->source_transforms}, $tf);
 	    $_->name($new_name);
 	    $_->data([[$col => $_->data]]);
@@ -2815,7 +2815,7 @@ __END__
 
 	    foreach my $star (@stars) {
 		printf "    STARRING: %s:%s\n", 
-		  $star->firstname, $star->lastname;
+		  $star->get_firstname, $star->get_lastname;
 	    }
 	}
   }
@@ -2823,7 +2823,7 @@ __END__
   # manipulate data then store it back in the database
   my @allstars = $dataset->get("movie/studio/star");
   $_->set_fullname($_->get_firstname.' '.$_->get_lastname)
-      foreach(@allstars);
+    foreach(@allstars);
 
   $dbh->storenode($dataset);
 
@@ -3105,8 +3105,14 @@ underlying relational schema and from the specification of the query itself.
 =head2 selectall_stag
 
  Usage   - $stag = $dbh->selectall_stag($sql);
+           $stag = $dbh->selectall_stag($sql, $nesting_clause);
+           $stag = $dbh->selectall_stag(-template=>$template,
+                                        -bind=>{%variable_bindinfs});
  Returns - L<Data::Stag>
- Args    - sql string, [nesting string]
+ Args    - sql string, 
+           [nesting string], 
+           [bind hashref],
+           [template DBIx::DBStag::SQLTemplate]
 
 Executes a query and returns a L<Data::Stag> structure
 
@@ -3181,10 +3187,39 @@ Recursively stores a tree structure in the database
 
   Usage   - $template = $dbh->find_template("my-template-name");
   Returns - L<DBIx::DBStag::SQLTemplate>
-  Args    - template name
+  Args    - str
 
 Returns an object representing a canned paramterized SQL query. See
 L<DBIx::DBStag::SQLTemplate> for documentation on templates
+
+=head2 list_templates
+
+  Usage   - $templates = $dbh->list_templates();
+  Returns - Arrayref of L<DBIx::DBStag::SQLTemplate>
+  Args    - 
+
+Returns a list of ALL defined templates - See
+L<DBIx::DBStag::SQLTemplate>
+
+=head2 find_templates_by_schema
+
+  Usage   - $templates = $dbh->find_templates_by_schema($schema_name);
+  Returns - Arrayref of L<DBIx::DBStag::SQLTemplate>
+  Args    - str
+
+Returns a list of templates for a particular schema - See
+L<DBIx::DBStag::SQLTemplate>
+
+=head2 find_templates_by_dbname
+
+  Usage   - $templates = $dbh->find_templates_by_dbname("mydb");
+  Returns - Arrayref of L<DBIx::DBStag::SQLTemplate>
+  Args    - db name
+
+Returns a list of templates for a particular db
+
+Requires resources to be set up (see below)
+
 
 =cut
 
@@ -3203,14 +3238,42 @@ Returns a list of resources; each resource is a hash
    schema=>"myschema",
   }
 
-This relies on you having a file describing all the relational dbs
-available to you, and setting the env var DBSTAG_DBIMAP_FILE set.
+=head1 SETTING UP RESOURCES
+
+The above methods rely on you having a file describing all the
+relational dbs available to you, and setting the env var
+DBSTAG_DBIMAP_FILE set (this is a B<:> separated list of paths).
 
 B<This is alpha code - not fully documented, API may change>
 
+Currently a resources file is a whitespace delimited text file -
+XML/Sxpr/IText definitions may be available later
+
+Here is an example of a resources file:
+
+  # LOCAL
+  mytestdb         rdb        Pg:mytestdb                      schema=test
+  
+  # SYSTEM
+  worldfactbook    rdb      Pg:worldfactbook@db1.mycompany.com  schema=wfb
+  employees        rdb      Pg:employees@db2.mycompany.com      schema=employees
+
+The first column is the B<nickname> or B<logical name> of the
+resource/db. This nickname can be used instead of the full DBI locator
+path (eg you can just use B<employees> instead of
+B<dbi:Pg:dbname=employees;host=db2.mycompany.com>
+
+The second column is the resource type - rdb is for relational
+database. You can use the same file to track other system datasources
+available to you, but DBStag is only interested in relational dbs.
+
+The 3rd column is a way of locating the resource - driver:name@host
+
+The 4th column is a B<;> separated list of B<tag>=B<value> pairs; the
+most important tag is the B<schema> tag. Multiple dbs may share the
+same schema, and hence share SQL Templates
+
 =cut
-
-
 
 =head1 COMMAND LINE SCRIPTS
 
