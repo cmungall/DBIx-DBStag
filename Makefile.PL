@@ -1,4 +1,4 @@
-#$Id: Makefile.PL,v 1.8 2004/04/19 02:10:02 cmungall Exp $
+#$Id: Makefile.PL,v 1.9 2004/04/26 16:02:40 cmungall Exp $
 
 
 # This Makefile.PL was cut-n-pasted from the DBIx::Abstract
@@ -103,7 +103,7 @@ WriteMakefile(
 	      'PREREQ_PM'    => {
 				 'Parse::RecDescent'  => 0,
 				 'Text::Balanced'     => 0,
-				 'Data::Stag'         => 0,
+				 'Data::Stag'         => '0.04',
 				 'DBIx::DBSchema'     => 0,
 				 'DBI'                => 0,
 				},
@@ -114,6 +114,7 @@ WriteMakefile(
                                  'scripts/stag-autotemplate.pl',
                                  'scripts/stag-template2bin.pl',
                                  'scripts/stag-storenode.pl',
+                                 'scripts/stag-ir.pl',
                                  'scripts/stag-qsh',
                                  'cgi-bin/ubiq.cgi',
 				],
