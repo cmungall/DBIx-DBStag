@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.7 2003/05/28 04:57:28 cmungall Exp $
+# $Id: DBStag.pm,v 1.8 2003/05/29 02:20:15 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1110,6 +1110,24 @@ sub selectall_sxpr {
     return $stag->sxpr;
 }
 
+# does not bother decomposing and nesting the results; just
+# returns the denormalised table from the SQL query.
+# arrayref of arrayrefs - rows x cols
+# first row of rows is column headings
+sub selectall_rows {
+    my $self = shift;
+    my ($sql, $nesting, $bind, $template) = 
+      rearrange([qw(sql nesting bind template)], @_);
+    my $rows =
+      $self->selectall_stag(-sql=>$sql,
+			    -nesting=>$nesting,
+			    -bind=>$bind,
+			    -template=>$template,
+			    -return_arrayref=>1,
+			   );
+    return $rows;
+}
+
 # ---------------------------------------
 # selectall_stag(sql, nesting)
 #
@@ -1123,8 +1141,8 @@ sub selectall_sxpr {
 # ---------------------------------------
 sub selectall_stag {
     my $self = shift;
-    my ($sql, $nesting, $bind, $template) = 
-      rearrange([qw(sql nesting bind template)], @_);
+    my ($sql, $nesting, $bind, $template, $return_arrayref) = 
+      rearrange([qw(sql nesting bind template return_arrayref)], @_);
     my $parser = $self->parser;
 
     my $sth;
@@ -1238,6 +1256,7 @@ sub selectall_stag {
     # making them all of a standard form; eg dealing
     # with functions and '*' wildcards appropriately
 
+    my @col_aliases_ordered = ();
     my @cols =
       map {
 	  # $_ iterator variable is over the columns
@@ -1250,6 +1269,7 @@ sub selectall_stag {
 	  # column alias, if exists
 	  # eg in 'SELECT name AS n' the alias is 'n'
           my $col_alias = $_->get_alias;
+	  push(@col_aliases_ordered, $col_alias);
 
 	  # make the name the alias; prepend named relation if supplied.
 	  # eg in 'SELECT person.name AS n' the name will become
@@ -1283,15 +1303,20 @@ sub selectall_stag {
 	      # return value is aliased, use that alias;
 	      # otherwise ...
 
+	      my $funcname = $func->get_name;
 	      # query the function stag node for the element
 	      # 'col'
 	      my ($col) = 
 		$func->where('col',
 			     sub {shift->get_table});
+	      my $table = $col_alias || $funcname;
 	      if (!$col_alias) {
-		  $col_alias = "FUNC";
+		  $col_alias = $funcname;
 	      }
-	      $name = $col->get_table . '.' . $col_alias;
+	      if ($col) {
+		  $table = $col->get_table;
+	      }
+	      $name = $table . '.' . $col_alias;
 	      # return:
 	      $name;
 	  }
@@ -1400,6 +1425,14 @@ sub selectall_stag {
     my $rows =
       $self->dbh->selectall_arrayref($sql_or_sth, undef, @exec_args);
     trace(0, sprintf("Got %d rows\n", scalar(@$rows)));
+    if ($return_arrayref) {
+	my @hdrs = ();
+	for (my $i=0; $i<@cols; $i++) {
+	    my $h = $col_aliases_ordered[$i] || $cols[$i];
+	    push(@hdrs, $h);
+	}
+	return [\@hdrs, @$rows];
+    }
 
     # --- reconstruct tree from relations
     my $stag =
@@ -2151,15 +2184,31 @@ sub selectgrammar {
                $col;
            }
            | <error>
-         selectexpr: bselectexpr
-           { $item[1] }
-           | <error>
+	 selectexpr: bselectexpr
+            { $item[1] }
+            | <error>
          bselectexpr: funccall
            { $item[1] }
            | <error>
-         bselectexpr: bselectcol
+         bselectexpr: selectcol
            { $item[1] }
            | <error>
+
+	 selectcol: brackselectcol operator selectcol
+	   { $item[1]}
+	   | <error>
+	 selectcol: brackselectcol
+	   { $item[1]}
+	   | <error>
+
+	 brackselectcol: '(' selectcol ')' 
+	   { $item[2]}
+	   | <error>
+
+	 brackselectcol: bselectcol
+	   { $item[1]}
+	   | <error>
+
          bselectcol: /(\w+)\.(\w+)/
            { N(col=>[
                      [name => $item[1]],
@@ -2203,6 +2252,9 @@ sub selectgrammar {
             $col;
            }
            | <error>
+
+	 operator: '+' | '-' | '*' | '/'
+	   
 
          fromtables: jtable
            { [$item[1]] }
@@ -2794,6 +2846,20 @@ generation model will later be used]
 
 =cut
 
+=head2 selectall_rows
+
+ Usage   - $tbl = $dbh->selectall_rows($sql);
+ Returns - arrayref of arrayref
+ Args    - sql string, [nesting string]
+
+As selectall_stag(), but the results of the SQL query are left
+undecomposed and unnested. The resulting structure is just a flat
+table; the first row is the column headings. This is similar to
+DBI->selectall_arrayref(). The main reason to use this over the direct
+DBI method is to take advantage of other stag functionality, such as
+templates
+
+=cut
 
 =head2 storenode
 

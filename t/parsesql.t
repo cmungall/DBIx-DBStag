@@ -6,13 +6,47 @@ BEGIN {
     # as a fallback
     eval { require Test; };
     use Test;    
-    plan tests => 20;
+    plan tests => 26;
 }
 use DBIx::DBStag;
 use FileHandle;
 use strict;
 
 my $dbh = DBIx::DBStag->new;
+
+if (1) {
+    my $sql =
+      q[
+ SELECT avg(abs(exon.start-exon.end)) AS av FROM x
+      ];
+    
+    my $s = $dbh->parser ->selectstmt($sql);
+    print $s->sxpr; 
+    my @cols = $s->get_cols->get_col;
+    ok(@cols == 1);
+    ok($cols[0]->get_alias eq 'av');
+    my $f = $s->get_from;
+    my @tbls = sort map {$_->get_name} $f->find_leaf;
+    print "T=@tbls\n";
+    ok("@tbls" eq "x");
+}
+
+if (1) {
+    my $sql =
+      q[
+ SELECT avg(abs(y)) AS av FROM x
+      ];
+    
+    my $s = $dbh->parser ->selectstmt($sql);
+    print $s->sxpr; 
+    my @cols = $s->get_cols->get_col;
+    ok(@cols == 1);
+    ok($cols[0]->get_alias eq 'av');
+    my $f = $s->get_from;
+    my @tbls = sort map {$_->get_name} $f->find_leaf;
+    print "T=@tbls\n";
+    ok("@tbls" eq "x");
+}
 
 if (1) {
     my $sql =
@@ -28,7 +62,7 @@ if (1) {
     my $f = $s->get_from;
     my @tbls = sort map {$_->get_name} $f->find_leaf;
     print "T=@tbls\n";
-    ok(@tbls eq "4");
+    ok(@tbls == 4);
 }
 if (1) {
     my $sql =
@@ -49,7 +83,7 @@ if (1) {
     my $f = $s->get_from;
     my @tbls = sort map {$_->get_name} $f->find_leaf;
     print "T=@tbls\n";
-    ok(@tbls eq "3");
+    ok(@tbls == 3);
 }
 if (1) {
     my $sql =
@@ -71,7 +105,7 @@ if (1) {
     my $f = $s->get_from;
     my @tbls = sort map {$_->get_name} $f->find_leaf;
     print "T=@tbls\n";
-    ok(@tbls eq "3");
+    ok(@tbls == 3);
 }
 if (1) {
     my $sql =

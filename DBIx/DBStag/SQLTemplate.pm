@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.4 2003/05/28 04:57:28 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.5 2003/05/29 02:20:15 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -295,15 +295,15 @@ sub get_sql_and_args {
 	ref($bind) eq 'HASH') {
 	%argh = %$bind;
     }
-    if (%argh) {
-        # simple rules for substituting variables
-        ($where, @args) = $self->_get_sql_where_and_args_from_hashmap(\%argh);
-    }
-    else {
+    if ($bind && ref($bind) eq "DBIx::DBStag::Constraint") {
         # COMPLEX BOOLEAN CONSTRAINTS
         my $constr;
         $constr = $bind;
         ($where, @args) = $self->_get_sql_where_and_args_from_constraints($constr);
+    }
+    else {
+        # simple rules for substituting variables
+        ($where, @args) = $self->_get_sql_where_and_args_from_hashmap(\%argh);
     }
     
     my $sql_clauses = $self->sql_clauses;

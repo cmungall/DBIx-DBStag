@@ -107,6 +107,12 @@ with templates
 used to override the SELECT clause of the query; useful for combining
 with templates
 
+=item -rows
+
+sometimes it is preferable to return the results as a table rather
+than xml or a similar nested structure. specifying -rows will fetch a
+table, one line per row, and columns seperated by tabs
+
 =item -show
 
 will show the parse of the SQL statement
@@ -136,9 +142,11 @@ my $pass;
 my $template;
 my $where;
 my $select;
+my $rows;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
+	   "rows"=>\$rows,
            "show"=>\$show,
 	   "nesting|n=s"=>\$nesting,
 	   "file|f=s"=>\$file,
@@ -206,6 +214,15 @@ if ($template) {
       ($template, $nesting, $bind);
 }
 eval {
+    if ($rows) {
+	my $ar =
+	  $dbh->selectall_rows(@sel_args);
+	foreach my $r (@$ar) {
+	    printf "%s\n", join("\t", @$r);
+	}
+	$dbh->disconnect;	
+	exit 0;
+    }
     $xml = $dbh->selectall_xml(@sel_args);
 };
 if ($@) {

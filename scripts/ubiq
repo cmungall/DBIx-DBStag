@@ -58,7 +58,7 @@ if ($help) {
 my @C =
   (config=>[
 	    setting=>[
-		      name => output_format,
+		      name => 'output_format',
 		      default => 'xml',
 		      allowed => 'xml',
 		      allowed => 'sxpr',
