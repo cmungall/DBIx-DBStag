@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.30 2004/06/16 02:16:20 cmungall Exp $
+# $Id: DBStag.pm,v 1.31 2004/07/15 19:14:29 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -22,7 +22,7 @@ use DBIx::DBSchema;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
-$VERSION='0.03';
+$VERSION="0.04";
 
 
 our $DEBUG;

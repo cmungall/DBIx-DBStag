@@ -18,3 +18,14 @@ Version 0.03
 2004-04-02      - Problem with 0.02 distribution (accidentally included blib)
 
 
+Version 0.04
+============
+
+2004-07-15      - storenode now works on databases that used the col
+                  name "id" as primary key
+
+                - added code to deal with <dbstag_mapping> in storenode
+                - DBStag now used for loading data into GO DB
+                  (http://www.godatabase.org)
+
+
