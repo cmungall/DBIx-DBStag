@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.35 2004/09/30 01:08:09 cmungall Exp $
+# $Id: DBStag.pm,v 1.36 2004/09/30 19:20:58 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -831,7 +831,7 @@ sub insert_into_cache {
         if (@undef) {
             my @defined = grep {defined $insert_h->{$_}} @$uset;
             trace(1, 
-                  "undefined column in unique key: $uset IN $element/[@$uset] ".
+                  "undefined column in unique key: @$uset IN $element/[@$uset] ".
                   join('; ', 
                        map {"$_=$insert_h->{$_}"} @defined,
                       )
@@ -3203,18 +3203,26 @@ __END__
     foreach(@allstars);
 
   $dbh->storenode($dataset);
+  exit 0;
 
 Or from the command line:
 
-  unix> selectall_xml -d 'dbi:Pg:dbname=spybase' 'SELECT * FROM studio NATURAL JOIN movie'
+  unix> selectall_xml.pl -d 'dbi:Pg:dbname=moviebase'     \
+       'SELECT * FROM studio NATURAL JOIN movie NATURAL   \
+          JOIN movie_to_star NATURAL JOIN star            \
+          USE NESTING (set(studio(movie(star))))'
+
+Or using a predefined template:
+
+  unix> selectall_xml.pl -d moviebase /mdb-movie genre=sci-fi
 
 =cut
 
 =head1 DESCRIPTION
 
-This module is for mapping from databases to Stag objects (Structured
-Tags - see L<Data::Stag>), which can also be represented as XML. It
-has two main uses:
+This module is for mapping between relational databases and Stag
+objects (Structured Tags - see L<Data::Stag>). Stag objects can also
+be represented as XML. The module has two main uses:
 
 =over
 
@@ -3227,7 +3235,9 @@ looking at the SQL query and introspecting the database schema, rather
 than requiring metadata or an object model.
 
 In this respect, the module works just like a regular L<DBI> handle, with
-some extra methods provided.
+a few extra methods.
+
+Queries can also make use of predefined B<templates>
 
 =item Storing Data
 
@@ -3243,17 +3253,22 @@ XML can also be imported, and a relational schema automatically generated.
 For a tutorial on using DBStag to build and query relational databases
 from XML sources, please see L<DBIx::DBStag::Cookbook>
 
-=head2 HOW QUERYING WORKS
+=head2 HOW QUERY RESULTS ARE TURNED INTO STAG/XML
 
 This is a general overview of the rules for turning SQL query results
-into a tree like data structure.
+into a tree like data structure. You don't need to understand all
+these rules to be able to use this module - you can experiment by
+using the B<selectall_xml.pl> script which comes with this
+distribution.
 
-=head3 Relations
+=head3 Mapping Relations
 
 Relations (i.e. tables and views) are elements (nodes) in the
 tree. The elements have the same name as the relation in the database.
 
-=head3 Columns
+These nodes are always non-terminal (ie they always have child nodes)
+
+=head3 Mapping Columns
 
 Table and view columns of a relation are sub-elements of the table or
 view to which they belong. These elements will be B<data elements>
@@ -3266,17 +3281,18 @@ For example, the following query
 
 will return a data structure that looks like this:
 
-  (person
-   (name "fred")
-   (job "forklift driver"))
-  (person
-   (name "joe")
-   (job "steamroller mechanic"))
+  (set
+   (person
+    (name "fred")
+    (job "forklift driver"))
+   (person
+    (name "joe")
+    (job "steamroller mechanic")))
 
 The data is shown as a lisp-style S-Expression - it can also be
 expressed as XML, or manipulated as an object within perl.
 
-=head3 Table aliases
+=head3 Handling table aliases
 
 If an ALIAS is used in the FROM part of the SQL query, the relation
 element will be nested inside an element with the same name as the
@@ -3286,9 +3302,10 @@ alias. For instance, the query
 
 Will return a data structure like this:
 
-  (author
-   (person
-    (name "Philip K Dick")))
+  (set
+   (author
+    (person
+     (name "Philip K Dick"))))
 
 The underlying assumption is that aliasing is used for a purpose in
 the original query; for instance, to determine the context of the
@@ -3301,16 +3318,17 @@ relation where it may be ambiguous.
 
 Will generate a nested result structure similar to this -
 
-  (employee
-   (person
-    (person_id "...")
-    (name "...")
-    (foo  "...")
-    (boss
-     (person
-      (person_id "...")
-      (name "...")
-      (foo  "...")))))
+  (set
+   (employee
+    (person
+     (person_id "...")
+     (name "...")
+     (salary  "...")
+     (boss
+      (person
+       (person_id "...")
+       (name "...")
+       (salary  "..."))))))
 
 If we neglected the alias, we would have 'person' directly nested
 under 'person', and the meaning would not be obvious. Note how the
@@ -3333,7 +3351,8 @@ instead of
 The main utility of querying using this module is in retrieving the
 nested relation elements from the flattened query results. Given a
 query over relations A, B, C, D,... there are a number of possible
-tree structures. Not all of the tree structures are meaningful.
+tree structures. Not all of the tree structures are meaningful or
+useful.
 
 Usually it will make no sense to nest A under B if there is no foreign
 key relationship linking either A to B, or B to A. This is not always
@@ -3352,7 +3371,7 @@ relation element preceeding it in the FROM clause; for instance:
   SELECT * FROM a NATURAL JOIN b NATURAL JOIN c
 
 If there are appropriately named foreign keys, the following data will
-be returned (assuming one row in each of a, b and c)
+be returned (assuming one column 'x_foo' in each of a, b and c)
 
   (set
    (a
@@ -3369,9 +3388,6 @@ table a, DBStag will not detect this - you have to guide it. There are
 two ways of doing this - you can guide by bracketing your FROM clause
 like this:
 
-  !!##
-  !!## NOTE - THIS PART IS NOT SET IN STONE - THIS MAY CHANGE
-  !!## 
   SELECT * FROM (a NATURAL JOIN b) NATURAL JOIN c
 
 This will generate
@@ -3416,7 +3432,7 @@ like.
 If you are using the DBStag API directly, you can pass in the nesting
 structure as an argument to the select call; for instance:
 
-  my $seq =
+  my $xmlstr =
     $dbh->selectall_xml(-sql=>q[SELECT * 
                                 FROM a NATURAL JOIN b 
                                      NATURAL JOIN c],
@@ -3424,7 +3440,7 @@ structure as an argument to the select call; for instance:
 
 or the equivalent -
 
-  my $seq =
+  my $xmlstr =
     $dbh->selectall_xml(q[SELECT * 
                           FROM a NATURAL JOIN b 
                                NATURAL JOIN c],
@@ -3446,7 +3462,7 @@ the SQL level) -
                                     </set>
                                    ]);
 
-As you can see, this is a little more verbose.
+As you can see, this is a little more verbose than the S-Expression
 
 Most command line scripts that use this module should allow
 pass-through via the '-nesting' switch.
@@ -3457,13 +3473,13 @@ If you alias a function or an expression, DBStag needs to know where
 to put the resulting column; the column must be aliased.
 
 This is inferred from the first named column in the function or
-expression; for example, in the SQL below
+expression; for example, the SQL below uses the minus function:
 
-  SELECT blah.*, foo.*, foo.x - foo.y AS z
+  SELECT blah.*, foo.*, foo.x-foo.y AS z
 
 The B<z> element will be nested under the B<foo> element
 
-You can force different nesting using a double underscore:
+You can force different nesting using a B<double underscore>:
 
   SELECT blah.*, foo.*, foo.x - foo.y AS blah__z
 
@@ -3486,7 +3502,12 @@ The schema for the resulting Stag structures can be seen to conform to
 a schema that is dynamically determined at query-time from the
 underlying relational schema and from the specification of the query itself.
 
+If you need to generate a DTD you can ause the B<stag-autoschema.pl>
+script, which is part of the L<Data::Stag> distribution
+
 =head1 QUERY METHODS
+
+The following methods are for using the DBStag API to query a database
 
 =head2 connect
 
@@ -3494,7 +3515,9 @@ underlying relational schema and from the specification of the query itself.
   Returns - L<DBIx::DBStag>
   Args    - see the connect() method in L<DBI>
 
-=cut
+This will be the first method you call to initiate a DBStag object
+
+The DSN may be a standard DBI DSN, or it can be a DBStag alias
 
 =head2 selectall_stag
 
@@ -3563,7 +3586,7 @@ DBI->selectall_arrayref(). The main reason to use this over the direct
 DBI method is to take advantage of other stag functionality, such as
 templates
 
-=head2 prepare_stag SEMI-PRIVATE METHOD
+=head2 prepare_stag PRIVATE METHOD
 
  Usage   - $prepare_h = $dbh->prepare_stag(-template=>$template);
  Returns - hashref (see below)
@@ -3585,15 +3608,21 @@ Returns a hashref
 
 =head1 STORAGE METHODS
 
+The following methods are for using the DBStag API to store nested
+data in a database
+
 =head2 storenode
 
   Usage   - $dbh->storenode($stag);
   Returns - 
   Args    - L<Data::Stag>
 
+SEE ALSO: The B<stag-storenode.pl> script
+
 Recursively stores a stag tree structure in the database.
 
-The database schema is introspected for most of the mapping data.
+The database schema is introspected for most of the mapping data, but
+you can supply your own (see later)
 
 Before a node is stored, certain subnodes will be pre-stored; these are
 subnodes for which there is a foreign key mapping FROM the parent node
@@ -3611,8 +3640,10 @@ Subsequently, all subnodes that were not pre-stored are now
 post-stored.  The primary key for the existing node will become
 foreign keys for the post-stored subnodes.
 
-Before storage, all node names are made dbsafe; they are lowercased,
-and the following transform is applied:
+=head3 Database table and column name restrictions
+
+Before storage, all node names are made B<DB-safe>; they are
+lowercased, and the following transform is applied:
 
   tr/a-z0-9_//cd;
 
@@ -3691,25 +3722,29 @@ this will not be updated; subnodes will not be stored
   Args    - bool (optional)
 
 The default behaviour of the storenode() method is to remap all
-PRIMARY KEY values it comes across (for example, unique internal
-surrogate IDs from one database may not correspond to the IDs in
-another database).
+B<surrogate> PRIMARY KEY values it comes across.
 
-If you do not use primary key columns in your load xml, then you can
-ignore this accessor.
+A surrogate primary key is typically a primary key of type SERIAL (or
+AUTO_INCREMENT) in MySQL. They are identifiers assigned automatically
+be the database with no semantics.
 
-If you use primary key columns in your XML, and the primary key values
-in the XML correspond exactly to the primary key values in the DB (eg
-if you do not use surrogate/auto-increment/serial PKs), then you
-should set this.  If this accessor is set to non-zero (true) then the
-primary key values in the XML will be used.
+It may be desirable to store the same data in two different
+databases. We would generally not expect the surrogate IDs to match
+between databases, even if the rest of the data does.
+
+(If you do not use surrogate primary key columns in your load xml,
+then you can ignore this accessor)
+
+If you use primary key columns in your XML, and the primary keys are
+not surrogate, then youshould set this.  If this accessor is set to
+non-zero (true) then the primary key values in the XML will be used.
 
 If your db has surrogate/auto-increment/serial PKs, and you wish to
 use these PK columns in your XML, yet you want to make XML that can be
 exported from one db and imported into another, then the default
 behaviour will be fine.
 
-For example, if we extract a 'person' from a db with auto-increment PK
+For example, if we extract a 'person' from a db with surrogate PK
 B<id> and unique key B<ssno>, we may get this:
 
   <person>
@@ -3738,11 +3773,11 @@ behaviour if we were storing back into the same db we retrieved from.
 =head2 is_caching_on B<ADVANCED OPTION>
 
   Usage   - $dbh->is_caching_on('person', 1)
-  Returns - bool
+  Returns - number
   Args    - number
                    0: off (default)
                    1: memory-caching ON
-                   2: memory-cahing  OFF, bulkload ON
+                   2: memory-caching OFF, bulkload ON
                    3: memory-caching ON, bulkload ON
 
 IN-MEMORY CACHING
@@ -3820,6 +3855,12 @@ Requires resources to be set up (see below)
 =cut
 
 =head1 RESOURCES
+
+Generally when connecting to a database, it is necessary to specify a
+DBI style DSN locator. DBStag also allows you specify a B<resource
+list> file which maps logical names to full locators
+
+The following methods allows you to use a resource list
 
 =head2 resources_list
 
@@ -3921,16 +3962,15 @@ CREATE TABLE statements.
 =item DBSTAG_TRACE
 
 setting this environment will cause all SQL statements to be printed
-on STDERR
+on STDERR, as well as a full trace of how nodes are stored
 
 =back
 
 =head1 BUGS
 
-This is alpha software! Probably several bugs.
-
 The SQL parsing can be quite particular - sometimes the SQL can be
-parsed by the DBMS but not by DBStag. The error messages are not always helpful.
+parsed by the DBMS but not by DBStag. The error messages are not
+always helpful.
 
 There are probably a few cases the SQL SELECT parsing grammar cannot deal with.
 
@@ -3957,7 +3997,7 @@ L<http://stag.sourceforge.net>
 
 =head1 AUTHOR
 
-Chris Mungall <F<cjm@fruitfly.org>>
+Chris Mungall <F<cjm AT fruitfly DOT org>>
 
 =head1 COPYRIGHT
 
