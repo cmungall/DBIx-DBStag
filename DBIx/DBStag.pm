@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.31 2004/07/15 19:14:29 cmungall Exp $
+# $Id: DBStag.pm,v 1.32 2004/08/16 16:59:59 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -82,9 +82,21 @@ sub connect {
     };
     if ($@ || !$self->dbh) {
 	my $mapf = $ENV{DBSTAG_DBIMAP_FILE};
-	print STDERR <<EOM
+        if ($dbi =~ /^dbi:(\w+)/) {
+            print STDERR <<EOM
 
-Could not connect to database "$dbi"
+Could not connect to database: "$dbi"
+
+EITHER   The required DBD driver "$1" is not installed
+    OR   There is no such database as "$dbi"
+
+EOM
+              ;
+        }
+        else {
+            print STDERR <<EOM
+
+Could not connect to database: "$dbi"
 
 To connect to a database, you need to set the environment variable
 DBSTAG_DBIMAP_FILE to the location of your DBI Stag resources file, OR
@@ -103,12 +115,16 @@ If you are specifying a valid DBI locator or valid logical name and
 still connect, check the database server is responding
 
 EOM
-	  ;
-	exit 0;
+              ;
+        }
+        exit 1;
     }
     # HACK
     $self->dbh->{RaiseError} = 1;
     $self->dbh->{ShowErrorStatement} = 1;
+    if ($dbi =~ /dbi:(\w+)/) {
+        $self->{_driver} = $1;
+    }
     $self->setup;
     return $self;
 }
@@ -765,6 +781,8 @@ sub _autoddl {
 #
 # we keep a cache of what is stored in
 # each table
+#
+# cache->{$element}->{$key}->{$val}
 # ----------------------------------------
 
 # list of table names that should be cached
@@ -776,76 +794,70 @@ sub cached_tables {
 
 sub is_caching_on {
     my $self = shift;
-    return 0;
+    my $element  = shift;
+    $self->{_is_caching_on} = {}
+      unless $self->{_is_caching_on};
+    if (@_) {
+        $self->{_is_caching_on}->{$element} = shift;
+    }
+    return $self->{_is_caching_on}->{$element};
 }
 
 sub query_cache {
     my $self = shift;
     my $element = shift;
     my $constr = shift;
-
-    my $cached_tuples = $self->get_cached_tuples($element);
-
-    foreach my $tuple (@$cached_tuples) {
-        my $is_different = 0;
-        foreach my $col (keys %$constr) {
-            unless (defined $tuple->{$col} &&
-                defined $constr->{$col} &&
-                $tuple->{$col} eq $constr->{$col}) {
-                $is_different = 1;
-            }
-        }
-        if (!$is_different) {
-            # we found the corresponding tuple -
-            return $tuple;
-        }
-    }
-
+    my $update_h = shift;
+    my @keycols = sort keys %$constr;
+    my $cache = $self->get_tuple_idx($element, \@keycols);
+    my $valstr = join("\t", map {$constr->{$_}} @keycols);
+#    use Data::Dumper;
+#    print Dumper $cache;
+    $cache->{$valstr} = $update_h if $update_h;
+    return $cache->{$valstr};
 }
 
 sub insert_into_cache {
     my $self = shift;
     my $element = shift;
     my $insert_h = shift;
-    my $cached_tuples = $self->get_cached_tuples($element);
-    push(@$cached_tuples,
-         $insert_h);
-    return;
+    my $usets = shift;
+    foreach my $uset (@$usets) {
+        my $cache = $self->get_tuple_idx($element, $uset);
+        my $valstr = join("\t", map {$insert_h->{$_}} sort @$uset);
+        $cache->{$valstr} = $insert_h;
+    }
+    return 1;
 }
 
 sub update_cache {
     my $self = shift;
     my $element = shift;
     my $store_hash = shift;
-    my $update_constr = shift;
+    my $unique_constr = shift;
 
     my $tuple = $self->query_cache($element,
-                                   $update_constr);
-    if ($tuple) {
-        # we found the corresponding tuple -
-        # update it
-        foreach my $col (keys %$store_hash) {
-            $tuple->{$col} = $store_hash->{$col}
-        }
-        return;
-    }
-    
-    my $cached_tuples = $self->get_cached_tuples($element);
-    push(@$cached_tuples,
-         {%$store_hash,
-          %$update_constr});
-
+                                   $unique_constr,
+                                   $store_hash);
     return;
 }
 
-sub get_cached_tuples {
+sub get_tuple_idx {
     my $self = shift;
     my $element = shift;
+    my @keycols = sort @{shift || []} || $self->throw;
+    
     my $cache = $self->cache;
     if (!$cache->{$element}) {
-        $cache->{$element} = [];
+        $cache->{$element} = {};
     }
-    return $cache->{$element};    
+    my $eltcache = $cache->{$element};
+    my $k = "@keycols";
+    if (!$eltcache->{$k}) {
+        $eltcache->{$k} = {};
+    }
+    
+    return $eltcache->{$k};    
 }
 
 sub cache {
@@ -1005,6 +1017,14 @@ sub _storenode {
     if ($element eq 'dbstag_metadata') {
         my @maps = $node->get_map;
         $self->mapping(\@maps);
+        my @links = $node->get_link;
+        if (@links) {
+            my %h =
+              map {
+                  ($_->sget_table => [$_->sget_from, $_->sget_to])
+              } @links;
+            $self->linking_tables(%h);
+        }
         return;
     }
     trace(0, "STORING $element\n", $node->xml);
@@ -1226,7 +1246,7 @@ sub _storenode {
     # to update.
     #
     # this hash is used to determine the key/val pairs
-    my %update_constr;
+    my %unique_constr;
 
     # this is the value of the primary key of
     # the inserted/update row
@@ -1245,7 +1265,7 @@ sub _storenode {
             $node->unset($pkcol);
 
             # set the update constraint based on the PK value
-            %update_constr = ($pkcol => $pk_id);
+            %unique_constr = ($pkcol => $pk_id);
 
             # return this value at the end
             $id = $pk_id;
@@ -1272,12 +1292,16 @@ sub _storenode {
         @usets = ( [grep {$_ ne $pkcol} @cols] );
     }
     if ($pkcol) {
-        # make single PK the first unique key set
+        # make single PK the first unique key set;
+        # add to beginning as this is the most efficient
         unshift(@usets, [$pkcol]);
     }
 
+    # get the column to select to get the pk for this element
+    my $select_col = $pkcol;
+
     # -------- find update constraint by unique keys ----
-    # if the update_constr hash is set, we know we
+    # if the unique_constr hash is set, we know we
     # are doing an UPDATE, and we know the query
     # constraint that will be used;
     #
@@ -1290,7 +1314,7 @@ sub _storenode {
     # is performed
     foreach my $uset (@usets) {
         # we already know & have the primary key
-        last if %update_constr;
+        last if %unique_constr;
 
         # if we are loading up a fresh/blank slate
         # database then we don't need to check for
@@ -1307,7 +1331,8 @@ sub _storenode {
 #        }
         trace(0, "TRYING USET: @$uset;; [pk=$pkcol]");
 
-        # get the values of the unique key columns
+        # get the values of the unique key columns;
+        # %constr is a candidate unique key=>val mapping
         my %constr =
           map {
               my $v = $node->sget($_);
@@ -1318,16 +1343,24 @@ sub _storenode {
         # non-NULL; try the next unique key if
         # this one is unsuitable
         next if grep { !defined($_) } values %constr;
+        %unique_constr = %constr;
+        if (!$select_col && @$uset == 1) {
+            $select_col = $uset->[0];
+        }
+        last;
+    }
+    # -- END OF @usets --
 
-        # what if no pk???
-        my $select_col = $pkcol || $uset->[0]; # use pk if possible
+    # %unique_constr is set; a mapping for a unique key colset
+    # if this is not set, then we must insert
 
-        # TEST
+    if (%unique_constr) {
+
+        # -- IN-MEMORY CACHING --
         # check if we have already updated/inserted
         # this tuple this session; and if so, what
         # the update constraint used was
         if ($is_caching_on) {
-
             # --
             # EXPERIMENTAL
             #
@@ -1335,76 +1368,86 @@ sub _storenode {
             #
             # --
 
+            $self->throw("no select col for $element") unless $select_col;
+            # fetch values of unique_constr from cache
             my %cached_colvals =
-              $self->query_cache($element,
-                                 \%constr,
-                                 $select_col);
-            my $is_different = 0;
-            foreach my $col (keys %cached_colvals) {
-                if (defined $cached_colvals{$col} &&
-                    $cached_colvals{$col} ne $store_hash{$col}) {
-                    $is_different = 1;
-                    last; # don't bother checking the others
-                }
-            }
-            if (!$is_different) {
-                # no change, so no point doing
-                # any database operations;
-                # just return the primary key
+              %{$self->query_cache($element,
+                                   \%unique_constr)
+                  || {}};
+            # have we stored anything with uniq key %unique_constr before?
+            if (%cached_colvals) {
                 if ($pkcol) {
                     $id = $cached_colvals{$pkcol};
+                    trace(0, "CACHED $pkcol by $pkcol = $id");
                 }
-                if ($tracekeyval) {
-                    printf STDERR "IGNORING CACHED: $tracenode = $tracekeyval\n"
+
+                # yes - has it changed?
+                foreach my $col (keys %cached_colvals) {
+                    if ($cached_colvals{$col} && $store_hash{$col} &&
+                        $cached_colvals{$col} && $store_hash{$col}) {
+                        # don't bother re-storing anything
+                        delete $store_hash{$col};
+                    }
                 }
-                return $id; # ???
+                if (%store_hash) {
+                    my @x = keys %store_hash;
+                    trace(0, "WILL STORE: @x");
+                }
+                else {
+                    trace(0, "NO STORE: store_hash empty");
+                }
             }
         }
-        
+        # -- END OF CACHING CHECK --
 
-        # we have a suitable unique key - all the
-        # column/attribute values are set in this
-        # node. let's check if this node is in
-        # the database by querying using the
-        # unique constraint
-        my $sql =
-          $self->makesql($element,
-                         \%constr,
-                         $select_col);
-        trace(0, "SQL: $sql");
-        my $vals =
-          $dbh->selectcol_arrayref($sql);
+        # -- GET PK VAL $id BASED ON unique_constr --
+        # (we may already have this based on memory-cache)
+        if (!$id) {
 
-        if (@$vals) {
-            # yes it does exist in DB; we shall do
-            # an update, and we shall use the current
-            # unique key as the update constraint
-            %update_constr = %constr;
-            if ($pkcol) {
-                # this is the value we return at the
-                # end
-                $id = $vals->[0];
-                if ($remap{$pkcol}) {
-                    #my $colvalmap = $self->get_mapping_for_col($pkcol);
-                    my $colvalmap = $self->id_remap_idx;
-                    #my $colvalmap = $self->get_mapping_for_col($element);
-                    $colvalmap->{$remap{$pkcol}} = $id;
-                    trace(0, "COLVALMAP $pkcol $remap{$pkcol} = $id");
+            # the input node contains all the keys in %update_constr
+            # - check to see if this relation exists in the DB
+
+            my $sql =
+              $self->makesql($element,
+                             \%unique_constr,
+                             $select_col);
+            trace(0, "SQL: $sql");
+            my $vals =
+              $dbh->selectcol_arrayref($sql);
+            
+            if (@$vals) {
+                # yes it does exist in DB; check if there is a
+                # pkcol - if there is, it means we can do an
+                # update and 
+                if ($pkcol && $select_col && $select_col eq $pkcol) {
+                    # this is the value we return at the
+                    # end
+                    $id = $vals->[0];
+                    if ($remap{$pkcol}) {
+                        #my $colvalmap = $self->get_mapping_for_col($pkcol);
+                        my $colvalmap = $self->id_remap_idx;
+                        #my $colvalmap = $self->get_mapping_for_col($element);
+                        $colvalmap->{$remap{$pkcol}} = $id;
+                        trace(0, "COLVALMAP $pkcol $remap{$pkcol} = $id");
+                    }
+                }
+                else {
+                    # $id not set, but we will later perform an update anyway
                 }
             }
-            # we have a suitable update constraint;
-            # ignore any other unique keys
-            last;
+            else {
+                # this node is not in the DB; force insert
+                %unique_constr = ();
+            }
         }
-    } # -- end of @usets loop
-    # condition: we have found our %update_constr OR we are doing insert
+    } # end of get pk val
 
     # ---- UPDATE OR INSERT -----
     # at this stage we know if we are updating
     # or inserting, depending on whether a suitable
     # update constraint has been found
 
-    if (%update_constr) {
+    if (%unique_constr) {
         # ** UPDATE **
         if ($self->noupdate_h->{$element}) {
             if ($tracekeyval) {
@@ -1412,7 +1455,7 @@ sub _storenode {
             }
             trace(0, sprintf("NOUPDATE on %s OR child nodes (We have %s)",
                              $element,
-                             join('; ',values %update_constr)
+                             join('; ',values %unique_constr)
                             ));
             # don't return yet; there are still the delayed nodes
             ##return $id;
@@ -1420,30 +1463,32 @@ sub _storenode {
         else {
             # if there are no fields modified,
             # no change
-            foreach (keys %update_constr) {
+            foreach (keys %unique_constr) {
                 # no point setting any column
                 # that is part of the update constraint
                 delete $store_hash{$_};
             } 
             
+            # only update if there are cols set that are
+            # not part of unique constraint
             if (%store_hash) {
                 if ($tracekeyval) {
                     printf STDERR "UPDATE: $tracenode = $tracekeyval\n"
                 }
                 $self->updaterow($element,
                                  \%store_hash,
-                                 \%update_constr);
+                                 \%unique_constr);
                 # -- CACHE RESULTS --
                 if ($is_caching_on) {
                     $self->update_cache($element,
                                         \%store_hash,
-                                        \%update_constr);
+                                        \%unique_constr);
                 }
             }
             else {
                 trace(0, sprintf("NOCHANGE on %s (We have %s)",
                                  $element,
-                                 join('; ',values %update_constr)
+                                 join('; ',values %unique_constr)
                             ));
                 if ($tracekeyval) {
                     printf STDERR "NOCHANGE: $tracenode = $tracekeyval\n"
@@ -1475,7 +1520,9 @@ sub _storenode {
                 $cache_hash{$pkcol} = $id;
             }
             $self->insert_into_cache($element,
-                                     \%cache_hash);
+                                     \%cache_hash,
+                                     \@usets);
+            trace(0, "caching $element");
         }
 
     }  # -- end of UPDATE/INSERT
@@ -1514,26 +1561,7 @@ sub _storenode {
     return $id;
 }
 
-
-
-#sub rmake_cons {
-#    my $node = shift;
-
-#    if ($node->element eq 'composite') {
-#	my $first = $node->getnode_first;
-#	my $second = $node->getnode_second;
-#	my $head = rmake_cons($first->data->[0]);
-#	my $tail = rmake_cons($second->data->[0]);
-#	return [$head, $tail];
-#    }
-#    elsif ($node->element eq 'leaf') {
-#	my $tn = $node->get_name;
-#	return $tn;
-#    }
-#    else {
-#	die;
-#    }
-#}
+# -- QUERYING --
 
 sub rmake_nesting {
     my $node = shift;
@@ -3058,6 +3086,24 @@ sub rearrange {
   }
   return @return_array;
 }
+
+#sub loadschema {
+#    my $self = shift;
+#    my ($ddl, $ddlf, $dialect) = 
+#      rearrange([qw(ddl ddlf dialect)], @_);
+#    if ($ddlf) {
+#        my $fh = FileHandle->new($ddlf) || $self->throw("no file $ddlf");
+#        $ddl = join('',<$fh>);
+#        $fh->close;
+#    }
+#    $self->throw("no DDL") unless $ddl;
+#    if ($dialect) {
+#        my $driver = $self->{_driver} || 'Pg';
+#        if ($driver ne $dialect) {
+            
+#        }
+#    }
+#}
 
 1;
 

@@ -9,13 +9,19 @@ Version 0.02
 ============
 
 2004-04-01      - Addition of Templates
-                - Use of double underscore to create skolem tables
+                - Use of double underscore to force columns into table
 
 
 Version 0.03
 ============
 
 2004-04-02      - Problem with 0.02 distribution (accidentally included blib)
+
+Version 0.04
+============
+
+                - Fixed storenode() so that it works with databases
+                  that use the primary_key="id" convention (eg GO DB)
 
 
 Version 0.04

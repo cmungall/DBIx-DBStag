@@ -33,8 +33,8 @@ my $data = <<EOM
   (address "1 a street"))
  (person
   (fname "fred")
-  (lname "minger")
-  (address "5555 bogging avenue")))
+  (lname "flob")
+  (address "23 acacia avenue")))
 EOM
 ;
 
@@ -42,7 +42,7 @@ drop(qw(person));
 my $dbh = dbh();
 #DBI->trace(1);
 
-$dbh->do($ddl);
+$dbh->do(cvtddl($ddl));
 
 my $personset = Data::Stag->from('sxprstr', $data);
 my @persons  = $personset->getnode_person;

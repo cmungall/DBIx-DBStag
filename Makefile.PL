@@ -1,4 +1,4 @@
-#$Id: Makefile.PL,v 1.11 2004/07/15 19:14:29 cmungall Exp $
+#$Id: Makefile.PL,v 1.12 2004/08/16 16:59:57 cmungall Exp $
 
 
 # This Makefile.PL was cut-n-pasted from the DBIx::Abstract
@@ -19,6 +19,7 @@ $opt =
   };
 Getopt::Long::GetOptions($opt, "help", 
                          "testdsn=s", 
+                         "testdriver=s", 
 #                         "testdb=s", 
                          "testhost=s",
 # 			 "testport=s", 
@@ -34,13 +35,36 @@ $hostflag = $hostflag ? "-h $hostflag" : '';
 
 my $TESTDB  = $ENV{TESTDB} || "test";
 my $TESTDRIVER = "Pg";
+#my $TESTDSN  = $ENV{TESTDSN} || "dbi:Pg:dbname=test$hostdsn";
 my $TESTDSN  = $ENV{TESTDSN} || "dbi:Pg:dbname=test$hostdsn";
 my $TESTRECREATE  = $ENV{TESTRECREATE} || "dropdb $hostflag test; createdb $hostflag test";
+if ($opt->{testdriver}) {
+    if ($opt->{testdriver} eq 'mysql') {
+        $TESTRECREATE = $ENV{TESTRECREATE} ||
+          "mysqladmin --force $hostflag drop test; mysqladmin --force $hostflag create test";
+    }
+    if ($opt->{testdriver} ne 'Pg') {
+        $TESTDSN = "$opt->{testdriver}:test$hostdsn";
+        print <<MSG;
+
+**** NOTE ****
+Some of the tests in the testsuite rely on postgresql CREATE TABLE syntax
+
+This means that the test suite will not work for your driver
+
+DBStag is known to work on mysql
+**************
+
+MSG
+
+    }
+    
+}
 
 
 my $source = {};
 
-foreach my $key (qw/testdsn testuser testhost testpassword testrecreate/) {
+foreach my $key (qw/testdsn testdriver testuser testhost testpassword testrecreate/) {
   Configure($opt, $source, $key);
 }
 
@@ -124,9 +148,17 @@ WriteMakefile(
 		       },
 	     );
 
-use DBStagTest;
 eval {
-    dbh()->disconnect;
+    require "DBStagTest.pm";
+};
+if ($@) {
+    print "You are missing a required module!\n";
+    print $@;
+    print "Exiting!\n";
+    exit 1;
+}
+eval {
+    DBStagTest::dbh()->disconnect;
 };
 if ($@) {
     print STDERR <<EOM
@@ -179,6 +211,9 @@ sub Configure {
     } elsif ($param eq "testdb") {
         $source->{$param} = "default";
         $opt->{$param} = $TESTDB;
+    } elsif ($param eq "testdriver") {
+        $source->{$param} = "default";
+        $opt->{$param} = $TESTDRIVER;
     } elsif ($param eq "testdsn") {
         $source->{$param} = "default";
         $opt->{$param} = $TESTDSN;
@@ -208,6 +243,10 @@ Possible options are:
 
   --testdsn=<db>         Use the DBI datasource <dsn> for running the test suite
                          defaults to $TESTDSN
+
+  --testdriver=<dbms>    Use the DBD driver <db> for running the test suite
+                         defaults to $TESTDRIVER
+                         (you may also need to change testrecreate)
 
   --testuser=<user>      Use the username <user> for running the test suite;
                          defaults to no username

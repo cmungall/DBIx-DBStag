@@ -14,11 +14,12 @@ BEGIN {
 
 use vars qw(@EXPORT);
 
+our $driver;
 #our $dbname = "dbistagtest";
 #our $testdb = "dbi:Pg:dbname=$dbname;host=localhost";
 
 
-@EXPORT = qw(connect_to_cleandb dbh drop);
+@EXPORT = qw(connect_to_cleandb dbh drop cvtddl);
 
 sub dbh {
     # this file defines sub connect_args()
@@ -36,6 +37,7 @@ sub dbh {
         printf STDERR "COULD NOT CONNECT USING DBI->connect(@conn)\n\n";
         die;
     }
+    $driver = $dbh->{_driver};
     $dbh;
 }
 
@@ -45,6 +47,14 @@ sub ddl {
     my $dbh = dbh();
     my $ddl = shift;
     
+}
+
+sub cvtddl {
+    my $ddl = shift;
+    if ($driver eq 'mysql') {
+        $ddl =~ s/ serial / INTEGER AUTO_INCREMENT /i;
+    }
+    return $ddl;
 }
 
 sub alltbl {
