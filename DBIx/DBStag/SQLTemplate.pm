@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.9 2003/08/03 08:39:12 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.10 2003/08/04 00:28:24 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -137,6 +137,65 @@ sub desc {
     my $P = $self->properties || [];
     my ($p) = grep {$_->{name} =~ /^desc/} @$P;
     return $p->{value} if $p;
+}
+
+sub get_example_input {
+    my $self = shift;
+    my $dbh = shift;
+    my $cachefile = shift;
+    my $refresh = shift;
+    my %ei = ();
+    if ($cachefile && -f $cachefile && !$refresh) {
+	my $fh = FileHandle->new($cachefile) || $self->throw("cannot open $cachefile");
+	while(<$fh>) {
+	    chomp;
+	    my ($n, @v) = split(/\t/, $_);
+	    $ei{$n} = \@v;
+	}
+	$fh->close;
+    }
+    my $P = $self->properties || [];
+    my @E = map {$_->{value}} grep {$_->{name} =~ /^example_input/} @$P;
+    foreach my $e (@E) {
+	if ($e =~ /(\S+)\s*=\>\s*(.*)/) {
+	    my $n = $1;
+	    my $v = $2;
+	    my @parts = split(/,\s*/, $v);
+	    $ei{$n} = [];
+	    while (my $part = shift @parts) {
+		if ($part =~ /select/i) {
+		    my $sql = "$part @parts LIMIT 5";
+		    my $examples = [];
+		    if (!$dbh) {
+			# no connection
+			last;
+		    }
+		    eval {
+			$examples =
+			  $dbh->selectcol_arrayref($sql);
+			push(@{$ei{$n}}, 
+			     grep {length($_) < 32} @$examples);
+		    };
+		    if ($@) {
+			$self->throw("Problem with template - invalid example_input: $e");
+		    }
+		    @parts = ();
+		}
+		else {
+		    push(@{$ei{$n}}, $part);
+		}
+	    }
+	}
+    }
+    if ($cachefile) {
+	my $fh = FileHandle->new(">$cachefile") || 
+	  $self->throw("cannot write to $cachefile");
+	foreach my $n (keys %ei) {
+	    print $fh join("\t", $n, @{$ei{$n}}), "\n";
+	}
+	$fh->close || $self->throw;
+    }
+    return \%ei;
 }
 
 

@@ -39,6 +39,7 @@ my $schema;
 my $loc;
 my $templates = [];
 my $varnames = [];
+my $example_input = {};
 my $options = {};
 my $nesting = '';
 my $rows;
@@ -69,11 +70,12 @@ if ($cgi->param('template')) {
 foreach (@$varnames) {
     my $v = $cgi->param("attr_$_");
     if ($v) {
+	$v =~ s/\*/\%/g;
 	$exec_argh{$_} = $v;
     }
 }
 if ($template && $cgi->param('submit') eq 'exectemplate') {
-    $dbh = DBIx::DBStag->connect($dbname);
+    conn();
     if ($cgi->param('where')) {
 	$template->set_clause(where=>$cgi->param('where'));
     }
@@ -121,6 +123,10 @@ sub hdr {
 
 }
 
+sub conn {
+    $dbh = DBIx::DBStag->connect($dbname) unless $dbh;
+}
+
 sub query_results {
     (
      ($stag ? stag_detail($stag) : ''),
@@ -134,7 +140,7 @@ sub is_format_flat {
 }
 sub keep {
     join('&',
-	 map {"$_=".param(escapeHTML($_))} grep {param($_)} qw(db template format save mode));
+	 map {"$_=".param(escapeHTML($_))} grep {param($_)} qw(dbname template format save mode));
 }
 
 sub template_chooser {
@@ -195,6 +201,10 @@ sub settemplate {
     die unless @matches == 1;
     $template = shift @matches;
     $varnames = $template->get_varnames;
+    conn;
+    $example_input = $template->get_example_input($dbh,
+						  "./cache/cache-$dbname-$n",
+						  1);
     $template_name = $n;
 }
 sub attr_settings {
@@ -202,7 +212,47 @@ sub attr_settings {
     my @vals = ();
     my @popups = ();
     my @extra = ();
-    
+
+    my $basic_tbl = 
+      table(Tr({},
+	       [
+		map {
+		    my $examples = '';
+		    my $ei = $example_input->{$_} || [];
+		    while (length("@$ei") > 100) {
+			pop @$ei;
+		    }
+		    if (@$ei) {
+			$examples = "  Examples: ".em(join(', ', @$ei));
+		    }
+		    td([$_, textfield("attr_$_").$examples])
+		} @$varnames
+	       ]));
+    my $adv_tbl =
+      table(Tr({},
+	       [td([
+		    join(br,
+			 "Override SQL SELECT:",
+			 textarea(-name=>'select',
+				  -cols=>80,
+				 ),
+			 "Override SQL WHERE:",
+			 textarea(-name=>'where',
+				  -cols=>80,
+				 ),
+			 "Override Full SQL Query:",
+			 textarea(-name=>'sql',
+				  -cols=>80,
+				 ),
+			 "Use nesting hierarchy:",
+			 textarea(-name=>'nesting',
+				  -cols=>80,
+				 ),
+			)
+					
+		   ])]));
+      
+
     return 
       (
        hr,
@@ -211,36 +261,22 @@ sub attr_settings {
        br,
        submit(-name=>'submit',
 	      -value=>'exectemplate'),
-       table({-border=>1},
-	     Tr({-valign=>"TOP"},
-		[td([
-		     table(Tr({},
-			      [
-			       map {
-				   td([$_, textfield("attr_$_")])
-			       } @$varnames
-			      ])),
-		     table(Tr({},
-			      [td([
-				   join(br,
-					"Customize SQL SELECT:",
-					textarea(-name=>'select'),
-					"Customize SQL WHERE:",
-					textarea(-name=>'where'),
-					"Custom Full SQL Query:",
-					textarea(-name=>'sql'),
-					"Nesting tree:",
-					textarea(-name=>'nesting'),
-				       )
-					
-				  ])])),
+       $basic_tbl,
+       $adv_tbl,
+#       table({-border=>1},
+#	     Tr({-valign=>"TOP"},
+#		[td([
 		     
-		    ])])),
-       popup_menu(-name=>'format',
-		  -values=>[qw(sxpr itext XML nested-HTML flat-TSV flat-CSV flat-HTML-table)]),
-       checkbox(-name=>'save',
-		-value=>1,
-		-label=>'Save Results to Disk'),
+#		    ])])),
+
+       ("Tree/Flat format: ",
+	popup_menu(-name=>'format',
+		   -values=>[qw(sxpr itext XML nested-HTML flat-TSV flat-CSV flat-HTML-table)]),
+	checkbox(-name=>'save',
+		 -value=>1,
+		 -label=>'Save Results to Disk'),
+       ),
+
        br,
        submit(-name=>'submit',
 	      -value=>'exectemplate'),
@@ -379,8 +415,6 @@ sub www {
 	  hr,
 	  h3("Choose a template:"),
 	  template_chooser($templates),
-	  submit(-name=>'submit',
-		 -value=>"selecttemplate"),
 	  hr,
 	  ($template ? '' : template_detail($templates)),
 	  hidden('template', param('template')),
