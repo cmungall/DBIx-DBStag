@@ -1,7 +1,7 @@
-package DBIStagTest;
+package DBStagTest;
 use strict;
 use base qw(Exporter);
-use DBIx::DBIStag;
+use DBIx::DBStag;
 
 BEGIN {
     use Test;
@@ -30,7 +30,7 @@ sub dbh {
     my @conn = connect_args();
 
     eval {
-        $dbh = DBIx::DBIStag->connect(@conn);    
+        $dbh = DBIx::DBStag->connect(@conn);    
     };
     if (!$dbh) {
         printf STDERR "COULD NOT CONNECT USING DBI->connect(@conn)\n\n";
