@@ -43,7 +43,6 @@ t/store5.t
 t/template1.x
 t/tstore2.x
 t/data/bond.el
-t/data/func.xml
 t/data/game.el
 t/data/mset.xml
 META.yml                                Module meta-data (added by MakeMaker)

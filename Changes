@@ -41,3 +41,4 @@ Version 0.07
 
 2004-02-09      - [cjm] added cache option to storenode.pl
                 -       escapes tabs and newlines with -rows switch
+                -       added check-resources.pl

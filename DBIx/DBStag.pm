@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.39 2005/02/09 19:48:53 cmungall Exp $
+# $Id: DBStag.pm,v 1.40 2005/02/09 19:49:30 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -118,7 +118,7 @@ still connect, check the database server is responding
 EOM
               ;
         }
-        exit 1;
+        die;
     }
     # HACK
     $self->dbh->{RaiseError} = 1;

@@ -21,6 +21,7 @@ my $tracenode;
 my $transform;
 my $trust_ids;
 my $autocommit;
+my %cache_h = ();
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
@@ -32,6 +33,7 @@ GetOptions(
            "tracenode=s"=>\$tracenode,
            "transform|t=s"=>\$transform,
            "trust_ids=s"=>\$trust_ids,
+           "cache=s%"=>\%cache_h,
            "autocommit"=>\$autocommit,
           );
 if ($help) {
@@ -60,6 +62,10 @@ if (@mappings) {
 @noupdate = map {split(/\,/,$_)} @noupdate;
 $dbh->noupdate_h({map {$_=>1} @noupdate});
 $dbh->tracenode($tracenode) if $tracenode;
+
+foreach (keys %cache_h) {
+    $dbh->is_caching_on($_, $cache_h{$_});
+}
 
 sub store {
     my $self = shift;

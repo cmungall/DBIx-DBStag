@@ -268,7 +268,7 @@ eval {
             else {
                 # ASCII
                 printf "%s\n", 
-                  join("\t", map {defined $_ ? $_ : '\\NULL'} @$r);
+                  join("\t", map {esc_col_val($_)} @$r);
             }
             $count++;
         }
@@ -298,6 +298,15 @@ if ($show) {
     print "DBI SQL:\n$sql\n\nARGUMENT BINDINGS: @exec_args\n";
 }
 #print $xml;
+exit 0;
+
+sub esc_col_val {
+    my $str = shift;
+    return '\\NULL' unless defined $str;
+    $str =~ s/\t/\\t/g;
+    $str =~ s/\n/\\n/g;
+    $str;
+}
 
 __END__
 
