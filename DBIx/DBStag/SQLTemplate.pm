@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.12 2003/08/07 06:00:45 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.13 2003/08/20 19:21:50 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -137,6 +137,19 @@ sub desc {
     my $P = $self->properties || [];
     my ($p) = grep {$_->{name} =~ /^desc/} @$P;
     return $p->{value} if $p;
+}
+
+sub nesting {
+    my $self = shift;
+    my $sql_clauses = $self->sql_clauses;
+    my ($use) = grep {$_->{name} =~ /use/i} @$sql_clauses;
+    my $nesting;
+    if ($use) {
+	my $v = $use->{value};
+	$v =~ s/\s*nesting\s*//i;
+	$nesting = Data::Stag->parsestr($v);
+    }
+    return $nesting;
 }
 
 sub get_example_input {
@@ -385,6 +398,11 @@ sub get_sql_and_args {
 	ref($bind) eq 'HASH') {
 	# binding is already specified as a hash - no need to convert
 	%argh = %$bind;
+	my %varnameh = map {$_=>1} @$varnames;
+	my @bad =  grep {!$varnameh{$_}} keys %argh;
+	if (@bad) {
+	    $self->throw("argument(s) not recognised: @bad");
+	}
     }
     if ($bind && ref($bind) eq "DBIx::DBStag::Constraint") {
         # COMPLEX BOOLEAN CONSTRAINTS - TODO
@@ -691,11 +709,21 @@ sub throw {
     confess;
 }
 
+my $default_cscheme =
+  {
+   'keyword'=>'cyan',
+   'variable'=>'magenta',
+   'text' => 'reset',
+   'comment' => 'red',
+   'block' => 'blue',
+   'property' => 'green',
+  };
+
 
 sub show {
     my $t = shift;
-    my $fh = shift;
-    my %cscheme = %{shift || {}};
+    my $fh = shift || \*STDOUT;
+    my %cscheme = %{shift || $default_cscheme};
     my $colorfunc = shift;
 
     my $n = $t->name;

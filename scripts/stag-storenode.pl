@@ -147,9 +147,10 @@ foreach my $fn (@ARGV) {
 	my $H = Data::Stag->makehandler($unit=>sub {
 					    my $self = shift;
 					    my $stag = shift;
-					    $dbh->begin_work;
+#					    $dbh->begin_work;
 					    $dbh->storenode($stag);
 					    $dbh->commit;
+					    return;
 					});
 	Data::Stag->parse(-file=>$fn, -handler=>$H);
     }

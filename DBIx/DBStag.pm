@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.15 2003/08/07 06:00:45 cmungall Exp $
+# $Id: DBStag.pm,v 1.16 2003/08/20 19:21:50 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -205,6 +205,27 @@ sub find_templates_by_schema {
     my @templates = grep {$_->stag_props->tmatch('schema', $schema)} @$tl;
     
     return \@templates;
+}
+
+sub find_templates_by_dbname {
+    my $self = shift;
+    my $dbname = shift;
+    my $res = $self->resources_hash->{$dbname};
+    my $templates;
+    if ($res) {
+	my $schema = $res->{schema} || '';
+	if ($schema) {
+	    $templates = $self->find_templates_by_schema($schema);
+	}
+	else {
+	    # unknown schema - show all templates
+#	    $templates = $self->template_list;
+	}
+    }
+    else {
+	$self->throw("unknown db: $dbname");
+    }
+    return $templates;
 }
 
 sub template_list {

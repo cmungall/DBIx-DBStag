@@ -13,6 +13,9 @@ use DBIx::DBStag;
 use CGI qw/:standard/;
 use vars qw(%IS_FORMAT_FLAT $cscheme);
 
+#$ENV{DBSTAG_TRACE}=1;
+
+
 # --------------------------
 # MAIN
 ubiq();
@@ -76,7 +79,7 @@ sub ubiq {
     my $ofh = \*STDOUT;
     my $format;
     my $dbname;
-
+    my $errmsg = '';
 
     # ++++++++++++++++++++++++++++++++++++++++++++++++++
     # keep
@@ -86,8 +89,28 @@ sub ubiq {
     sub keep;			#
     *keep = sub {
 	join('&',
-	     map {"$_=".param(escapeHTML($_))} grep {param($_)} qw(dbname template format save mode));
+	     map {"$_=".param(myescapeHTML($_))} grep {param($_)} qw(dbname template format save mode));
     };				# end of sub: keep
+
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++
+    # url
+    #
+    #
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++
+    sub url;			#
+    *url = sub {
+	my $base = shift;
+	my %p = @_;
+	%p = map {
+	    my $v = param($_);
+	    $p{$_} ? 
+	      ($_ => $p{$_}) :
+		($v ? ($_=>$v) : ());
+	} (keys %p, qw(dbname template format save mode));
+	return "$base?".
+	  join('&',
+	       map {"$_=".$p{$_}} keys %p);
+    };				# end of sub: url
 
 
     # ++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -171,7 +194,8 @@ sub ubiq {
 	(hr,
 	 href('http://stag.sourceforge.net'),
 	 br,
-	 myfont('$Id: ubiq.cgi,v 1.5 2003/08/04 02:22:22 cmungall Exp $', (size=>-2)),
+	 myfont('$Id: ubiq.cgi,v 1.6 2003/08/20 19:21:50 cmungall Exp $x',
+		(size=>-2)),
 	);
     };				# end of sub: footer
 
@@ -273,7 +297,6 @@ sub ubiq {
     sub template_chooser;	#
     *template_chooser = sub {
 	#my $templates = shift;
-	my $KEEP = keep;
 	return 
 	  table(Tr({-valign=>"TOP"},
 		   [
@@ -291,9 +314,9 @@ sub ubiq {
 			   [
 			    href("#$name", '[scroll]'),
 			    #			href("#$name", '[view]'),
-			    href(sprintf('ubiq.cgi?%s&template=%s', $KEEP, $name),
+			    href(url('ubiq.cgi', (template=>$name)),
 				 strong($name)),
-			    em($desc),
+			    $desc.hr,
 			   ])
 		    } @$templates,
 		
@@ -374,6 +397,10 @@ sub ubiq {
 	    checkbox(-name=>'save',
 		     -value=>1,
 		     -label=>'Save Results to Disk'),
+	    ' ',
+	    checkbox(-name=>'showsql',
+		     -value=>1,
+		     -label=>'Show SQL Statement'),
 	   ),
 
 	   br,
@@ -424,16 +451,18 @@ sub ubiq {
     #
     # ++++++++++++++++++++++++++++++++++++++++++++++++++
     sub settemplate;		#
-    *settemplate = sub ($) {
+    *settemplate = sub {
 	my $n = shift;
 	my @matches = grep {$_->name eq $n} @$templates;
 	die "looking for $n, got @matches" unless @matches == 1;
 	$template = shift @matches;
 	$varnames = $template->get_varnames;
 	conn;
+	my $cachef = "./cache/cache-$dbname-$n";
 	$example_input = $template->get_example_input($dbh,
-						      "./cache/cache-$dbname-$n",
+						      $cachef,
 						      1);
+	system("chmod 777 $cachef");
 	$template_name = $n;
     };				# end of sub: settemplate
 
@@ -481,6 +510,73 @@ sub ubiq {
 
 
     # ++++++++++++++++++++++++++++++++++++++++++++++++++
+    # display_helppage
+    #
+    #
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++
+    sub display_helppage;			#
+    *display_helppage = sub {
+	print(header,
+	      start_html("UBIQ: Instructions"),
+	      h1("UBIQ: Instructions for use"),
+
+	      h3("What is this?"),
+	      p("UBIQ is a generic interface to any relational database.",
+		"It allows web-based queries either through SQL or an",
+		"extensible set of",strong("SQL Templates"),
+		"which must be defined for the database of interest."),
+	      p("UBIQ will take the SQL query results and make a",
+		strong("hierarchical"), "data structure which is displayed",
+		"in a format such as XML or indented text"),
+	      p("This is achieved using the ",
+		href("http://stag.sourceforge.net", "DBStag"),
+		"perl module"),
+	      p("UBIQ is intended for advanced, generic queries.",
+		"If you want user-friendly queries you should use an",
+		"interface that has been custom-designed for the database",
+		"you are interested in."),
+	      
+	      h3("Using UBIQ"),
+	      p("First of all select the database of interest and",
+		"click 'selectdb'. (There may only be one database,",
+		"in which case you can skip this part)."),
+	      p("Next, choose a template from the list available for",
+		"That database. Each template should have a description of",
+		"what kind of query it is. You can also scroll down to the full",
+		"SQL Template definition. For a description of the SQL Template",
+		"syntax, see",
+		href("http://stag.sourceforge.net", "Stag Documentation"),
+	       ),
+	      p("After you have selected a template, you can paste in settings",
+		"for template attributes.",
+		"The character '*' gets treated as a wildcard.",
+	       ),
+	      p("You can now choose a format for the results.",
+		"Most of the formats are ", strong("hierarchical."),
+		"if a hierarchical format is selected, then UBIQ will",
+		"perform a transformation on the flat, tabular query results",
+		"and build a tree-type structure that should reflect the",
+		"natural organisation of the data."),
+	      p("Hierarchical formats are XML, sxpr (Lisp S-Expressions),",
+		"itext (indented text)."),
+	      p("Non-hierarchical formats are tables of comma/tab seperated fields,",
+		"which can optionally formatted into an HTML table"),
+	      p("You can also choose to see the actual SQL that gets executed"),
+	      p("When you have set the parameters, you can execute the template"),
+	      p(em("Note"), "As yet, UBIQ has no means of prioritising queries,",
+		"it is possible to launcg queries that put a large load on the",
+		"server, please be careful"),
+	      
+	      h3("Advanced use"),
+	      p("Yes, a SOAP interface would be nice. No plans as yet.",
+	       ),
+	      
+	      p(href("ubiq.cgi", "Start UBIQ")),
+	      
+	     );
+    };                          # end of sub: display_helppage
+
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++
     # display_htmlpage
     #
     # MAIN PAGE
@@ -505,6 +601,9 @@ sub ubiq {
 
 	      # QUERY RESULTS - if present
 	      (query_results),
+
+	      # ERRORS - if present
+	      ($errmsg),
 
 	      # ATTRIBUTE CHOOSER - if template is set
 	      (attr_settings(),
@@ -551,7 +650,7 @@ sub ubiq {
 
 		     # sets $template $varnames
 		     settemplate(param('template'))
-		       if param('template');
+		       if param('template') && param('submit') ne 'selectdb';
 		     
 		     # set variable bindings
 		     foreach (@$varnames) {
@@ -573,26 +672,34 @@ sub ubiq {
 
     # execute query
     if ($template && param('submit') eq 'exectemplate') {
-	conn();
-	if (param('where')) {
-	    $template->set_clause(where=>param('where'));
-	}
-	if (param('select')) {
-	    $template->set_clause(where=>param('select'));
-	}
-	if (is_format_flat) {
-	    $rows =
-	      $dbh->selectall_rows(
-				   -template=>$template,
-				   -bind=>\%exec_argh,
-				  );
-	} else {
-	    $stag =
-	      $dbh->selectall_stag(
-				   -template=>$template,
-				   -bind=>\%exec_argh,
-				   -nesting=>$nesting,
-				  );
+	eval {
+	    conn();
+	    
+	    if (param('where')) {
+		$template->set_clause(where=>param('where'));
+	    }
+	    if (param('select')) {
+		$template->set_clause(where=>param('select'));
+	    }
+	    if (is_format_flat) {
+		$rows =
+		  $dbh->selectall_rows(
+				       -template=>$template,
+				       -bind=>\%exec_argh,
+				      );
+	    } else {
+		$stag =
+		  $dbh->selectall_stag(
+				       -template=>$template,
+				       -bind=>\%exec_argh,
+				       -nesting=>$nesting,
+				      );
+	    }
+	};
+	if ($@) {
+	    my $err = $@;
+	    $errmsg =
+	      br.strong("Database Error:")."<pre>$err</pre>";
 	}
     }
 
@@ -601,6 +708,10 @@ sub ubiq {
 	# WRITE TO FILE
 	print(header({-type=>"text/text"}),
 	      query_results);
+    }
+    if (param('help')) {
+	# WRITE TO FILE
+	display_helppage
     }
     else {
 	# WRITE HTML
@@ -621,7 +732,7 @@ sub ubiq {
 #
 #
 # ++++++++++++++++++++++++++++++++++++++++++++++++++
-sub href ($) {
+sub href {
     my $url = shift;
     my $n = shift || $url;
     "<a href=\"$url\">$n</a>";
@@ -657,6 +768,16 @@ sub escape ($@) {
     $s =~ tr/$f/$t/;
     $s;
 }				# end of sub: escape
+
+# ++++++++++++++++++++++++++++++++++++++++++++++++++
+# myescapeHTML
+#
+#   
+# ++++++++++++++++++++++++++++++++++++++++++++++++++
+sub myescapeHTML ($) {
+    my $s = shift;
+    return $s;
+}				# end of sub: myescapeHTML
 
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++

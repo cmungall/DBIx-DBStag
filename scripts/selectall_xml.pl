@@ -1,5 +1,222 @@
 #!/usr/local/bin/perl -w
 
+# POD docs at end of file
+
+use strict;
+
+use Carp;
+use DBIx::DBStag;
+use Data::Dumper;
+use Getopt::Long;
+
+my $debug;
+my $help;
+my $db;
+my $nesting;
+my $show;
+my $file;
+my $user;
+my $pass;
+my $template_name;
+my $where;
+my $select;
+my $rows;
+my $writer;
+my $verbose;
+my $color;
+my $out;
+GetOptions(
+           "help|h"=>\$help,
+	   "db|d=s"=>\$db,
+	   "rows"=>\$rows,
+           "show"=>\$show,
+	   "nesting|n=s"=>\$nesting,
+	   "file|f=s"=>\$file,
+	   "user|u=s"=>\$user,
+	   "pass|p=s"=>\$pass,
+	   "template|t=s"=>\$template_name,
+	   "where|wh=s"=>\$where,
+	   "writer|w=s"=>\$writer,
+	   "select|s=s"=>\$select,
+	   "verbose|v"=>\$verbose,
+           "colour|color"=>\$color,
+	   "out|o=s"=>\$out,
+	   "trace"=>\$ENV{DBSTAG_TRACE},
+          );
+
+@ARGV = map { if (/^\/(.*)/) {$template_name=$1;()} else {$_} } @ARGV;
+
+
+if ($help && !$template_name && !$db) {
+    system("perldoc $0");
+    exit 0;
+}
+
+my $sql;
+if ($file) {
+    open(F, $file) || die $file;
+    $sql = join('', <F>);
+    close(F);
+}
+elsif ($template_name) {
+    # No SQL required if template provided
+}
+elsif ($help) {
+    # deal with this later...
+}
+else {
+    $sql = shift @ARGV;
+
+    if ($sql eq '-') {
+	print STDERR "Reading SQL from STDIN...\n";
+	$sql = <STDIN>;
+    }
+#    if ($sql =~ /^\/(.*)/) {
+#	# shorthand for a template
+#	$template_name = $1;
+#	$sql = '';
+#    }
+}
+
+my $template;
+if ($template_name) {
+    $template =
+      DBIx::DBStag->new->find_template($template_name);
+}
+
+if ($help) {
+    if ($template)  {
+	my $varnames = $template->get_varnames;
+	my $desc = $template->desc;
+	#	$desc =~ s/\s+/ /;
+	if ($verbose) {
+	    require "Term/ANSIColor.pm";
+
+	    $template->show(\*STDOUT,
+			    undef,
+			    sub { Term::ANSIColor::color(@_)}
+			   );
+	}
+	else {
+	    print "DESC: $desc\n";
+	}
+	print "VARIABLES:\n";
+	foreach my $vn (@$varnames) {
+	    print "  $vn\n";
+	}
+	my $nesting = $template->nesting;
+	if ($nesting) {
+	    print "QUERY RESULT STRUCTURE (NESTING):\n";
+	    print $nesting->sxpr;
+	}
+    }
+    else {
+	# show templates
+	my $dbh =
+	  DBIx::DBStag->new;
+	my $templates = $dbh->find_templates_by_dbname($db);
+	foreach my $template (@$templates) {
+	    if ($verbose) {
+		require "Term/ANSIColor.pm";
+		$template->show(\*STDOUT,
+			    undef,
+			    sub { Term::ANSIColor::color(@_)},
+			       );
+	    }
+	    else {
+		my $desc = $template->desc;
+		$desc =~ s/\s*$//;
+		
+		printf "NAME: %s\nDESC: %s\n//\n",
+		  $template->name, $desc;
+	    }
+	}
+    }
+    exit 0;
+}
+
+if (!$db) {
+    die "you must specify a database name (logical name or dbi path) with -d";
+}
+
+# QUERY DB
+my $dbh = 
+  DBIx::DBStag->connect($db, $user, $pass);
+
+my $xml;
+my @sel_args = ($sql, $nesting);
+if ($template) {
+    if ($where) {
+	$template->set_clause(where => $where);
+    }
+    if ($select) {
+	$template->set_clause(select => $select);
+    }
+
+    my @args = ();
+    my %argh = ();
+    while (my $arg = shift @ARGV) {
+#	print "ARG:$arg;;\n";
+	if ($arg =~ /(.*)=(.*)/) {
+	    $argh{$1} = $2;
+	}
+	else {
+	    push(@args, $arg);
+	}
+    }
+    my $bind = \@args;
+    if (%argh) {
+	$bind = \%argh;
+	if (@args) {
+	    die("can't used mixed argument passing");
+	}
+    }
+    @sel_args =
+      ($template, $nesting, $bind);
+}
+eval {
+    if ($rows) {
+	my $ar =
+	  $dbh->selectall_rows(@sel_args);
+	foreach my $r (@$ar) {
+	    printf "%s\n", join("\t", map {defined $_ ? $_ : '\\NULL'} @$r);
+	}
+	$dbh->disconnect;	
+	exit 0;
+    }
+    my $H = Data::Stag->getformathandler($writer || $ENV{STAG_WRITER} || 'xml');
+    $H->use_color(1) if $color;
+    my $fh;
+    if ($out) {
+	my $fh = FileHandle->new(">$out") || die "cannot write to $out";
+	$H->fh($fh);
+    }
+    else {
+	$H->fh(\*STDOUT);
+    }
+    my $stag = $dbh->selectall_stag(@sel_args);
+    $stag->events($H);
+    $fh->close if $fh;
+#    if ($writer) {
+#	my $stag = $dbh->selectall_stag(@sel_args);
+#	$xml = $stag->$writer();
+#    }
+#    else {
+#	$xml = $dbh->selectall_xml(@sel_args);
+#    }
+};
+if ($@) {
+    print "FAILED\n$@";
+}
+
+$dbh->disconnect;
+if ($show) {
+    print $dbh->last_stmt->xml;
+}
+#print $xml;
+
+__END__
+
 =head1 NAME 
 
 selectall_xml.pl
@@ -45,6 +262,14 @@ simple list of arguments which get passed into the template in order
 To use templates, you should have the environment variable
 B<DBSTAG_TEMPLATE_DIRS> set. See B<DBIx::DBStag> for details.
 
+=head2 LISTING AVAILABLE TEMPLATES FOR A DB
+
+   selectall_xml.pl -d mydb -h
+
+=head2 LISTING VARIABLES FOR A TEMPLATE
+
+   selectall_xml.pl /genedb-gene -h
+
 =head1 ENVIRONMENT VARIABLES
 
 =over
@@ -66,7 +291,13 @@ are requested
 
 =item -h|help
 
-shows this page
+shows this page if no other arguments are given
+
+if a template is specified, gives template details
+
+if a db is specified, lists templates for that db
+
+use in conjunction with -v for full descriptions
 
 =item -d|dbname DBNAME
 
@@ -113,6 +344,32 @@ sometimes it is preferable to return the results as a table rather
 than xml or a similar nested structure. specifying -rows will fetch a
 table, one line per row, and columns seperated by tabs
 
+=item -o|out FILE
+
+a file to output the results to
+
+=item -w|writer WRITER
+
+writer class; can be any perl class, or one of these
+
+=over
+
+=item xml [default]
+
+=item sxpr
+
+lisp S-Expressions
+
+=item itext
+
+indented text
+
+=back
+
+=item -color
+
+shows results in color (sxpr and itext only)
+
 =item -show
 
 will show the parse of the SQL statement
@@ -122,132 +379,3 @@ will show the parse of the SQL statement
 
 =cut
 
-
-
-use strict;
-
-use Carp;
-use DBIx::DBStag;
-use Data::Dumper;
-use Getopt::Long;
-
-my $debug;
-my $help;
-my $db;
-my $nesting;
-my $show;
-my $file;
-my $user;
-my $pass;
-my $template;
-my $where;
-my $select;
-my $rows;
-my $writer;
-GetOptions(
-           "help|h"=>\$help,
-	   "db|d=s"=>\$db,
-	   "rows"=>\$rows,
-           "show"=>\$show,
-	   "nesting|n=s"=>\$nesting,
-	   "file|f=s"=>\$file,
-	   "user|u=s"=>\$user,
-	   "pass|p=s"=>\$pass,
-	   "template|t=s"=>\$template,
-	   "where|wh=s"=>\$where,
-	   "writer|w=s"=>\$writer,
-	   "select|s=s"=>\$select,
-          );
-if ($help) {
-    system("perldoc $0");
-    exit 0;
-}
-
-if (!$db) {
-    die "you must specify a database name (logical name or dbi path) with -d";
-}
-
-my $dbh = 
-  DBIx::DBStag->connect($db, $user, $pass);
-my $sql;
-if ($file) {
-    open(F, $file) || die $file;
-    $sql = join('', <F>);
-    close(F);
-}
-elsif ($template) {
-    # No SQL required if template provided
-}
-else {
-    $sql = shift @ARGV;
-
-    if ($sql eq '-') {
-	print STDERR "Reading SQL from STDIN...\n";
-	$sql = <STDIN>;
-    }
-    if ($sql =~ /^\/(.*)/) {
-	# shorthand for a template
-	$template = $1;
-	$sql = '';
-    }
-}
-
-my $xml;
-my @sel_args = ($sql, $nesting);
-if ($template) {
-    $template =
-      DBIx::DBStag->new->find_template($template);
-    if ($where) {
-	$template->set_clause(where => $where);
-    }
-    if ($select) {
-	$template->set_clause(select => $select);
-    }
-
-    my @args = ();
-    my %argh = ();
-    while (my $arg = shift @ARGV) {
-	if ($arg =~ /(.*)=(.*)/) {
-	    $argh{$1} = $2;
-	}
-	else {
-	    push(@args, $arg);
-	}
-    }
-    my $bind = \@args;
-    if (%argh) {
-	$bind = \%argh;
-	if (@args) {
-	    die("can't used mixed argument passing");
-	}
-    }
-    @sel_args =
-      ($template, $nesting, $bind);
-}
-eval {
-    if ($rows) {
-	my $ar =
-	  $dbh->selectall_rows(@sel_args);
-	foreach my $r (@$ar) {
-	    printf "%s\n", join("\t", map {defined $_ ? $_ : '\\NULL'} @$r);
-	}
-	$dbh->disconnect;	
-	exit 0;
-    }
-    if ($writer) {
-	my $stag = $dbh->selectall_stag(@sel_args);
-	$xml = $stag->$writer();
-    }
-    else {
-	$xml = $dbh->selectall_xml(@sel_args);
-    }
-};
-if ($@) {
-    print "FAILED\n$@";
-}
-
-$dbh->disconnect;
-if ($show) {
-    print $dbh->last_stmt->xml;
-}
-print $xml;
