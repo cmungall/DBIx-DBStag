@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.21 2004/04/02 00:46:08 cmungall Exp $
+# $Id: DBStag.pm,v 1.22 2004/04/02 04:03:32 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -22,7 +22,7 @@ use DBIx::DBSchema;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
-$VERSION = '0.01';
+$VERSION = '0.02';
 
 
 our $DEBUG;
@@ -1513,7 +1513,7 @@ sub prepare_stag {
 	}
 	($sql, @exec_args) = $template->get_sql_and_args($bind);
     }
-    trace 0, "parsing: $sql\n";
+    trace 0, "parsing_sql: $sql\n";
 
     # PRE-parse SQL statement for stag-specific extensions
     if ($sql =~ /(.*)\s+use\s+nesting\s*(.*)/si) {
@@ -1551,7 +1551,7 @@ sub prepare_stag {
     }
 
 
-    trace 0, "parsed: $sql\n";
+    trace 0, "parsed_sql: $sql\n";
 #    trace 0, $stmt->xml;
     my $dbschema = $self->dbschema;
 
