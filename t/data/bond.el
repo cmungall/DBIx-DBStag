@@ -4,10 +4,9 @@
    (country "UK")
    (bureau_to_agent
     (agent
-     (agent_id "007")
-     (agent_name
-      (lastname "Bond")
-      (firstname "James"))
+     (agent_code "007")
+     (lastname "Bond")
+     (firstname "James")
      (license "kill")
      (mission
       (codename "goldfinger")

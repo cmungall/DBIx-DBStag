@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.3 2003/04/30 05:01:18 cmungall Exp $
+# $Id: DBStag.pm,v 1.4 2003/05/22 01:30:45 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -47,14 +47,21 @@ sub dmp {
 sub new {
     my $proto = shift; 
     my $class = ref($proto) || $proto;
+    my ($dbh) = 
+      rearrange([qw(dbh)], @_);
+
     my $self = {};
     bless $self, $class;
+    if ($dbh) {
+	$self->dbh($dbh);
+    }
     $self;
 }
 
 
 sub connect {
     my $class = shift;
+    my $dbi = shift;
     my $self;
     if (ref($class)) {
         $self = $class;
@@ -63,11 +70,86 @@ sub connect {
         $self = {};
         bless $self, $class;
     }
-    $self->dbh(DBI->connect(@_));
+    $dbi = $self->resolve_dbi($dbi);
+    $self->dbh(DBI->connect($dbi, @_));
     # HACK
     $self->dbh->{RaiseError} = 1;
     $self->setup;
     return $self;
+}
+
+sub resolve_dbi {
+    my $self = shift;
+    my $dbi = shift;
+    if ($dbi !~ /[;:]/) {
+	my $mapf = $ENV{DBSTAG_DBIMAP_FILE};
+	if ($mapf) {
+	    my $loc;
+	    if (-f $mapf) {
+		open(F, $mapf) || $self->throw("Cannot open $mapf");
+		while(<F>) {
+		    chomp;
+		    next if /^\#/;
+		    s/^\!//;
+		    my @f=split(' ', $_);
+		    if ($f[0] &&
+			$f[0] eq $dbi &&
+			$f[1] eq "rdb") {
+			$loc = $f[2];
+			last;
+		    }
+		}
+		close(F) || $self->throw("Cannot close $mapf");
+	    }
+	    else {
+		$self->throw("$mapf does not exist");
+	    }
+	    if (!$loc) {
+		$self->throw("Could not find $dbi in $mapf");
+	    }
+	    if ($loc =~ /(\w+):(\S+)\@(\S+)/) {
+		my $dbms = $1;
+		my $dbn = $2;
+		my $host = $3;
+		$dbi = "dbi:$dbms:database=$dbn:host=$host";
+		if ($dbms =~ /pg/i) {
+		    $dbi = "dbi:Pg:dbname=$dbn;host=$host";
+		}
+	    }
+	    else {
+		$self->throw("$dbi -> $loc does not conform to standard.\n".
+			     "<DBMS>:<DB>\@<HOST>");
+	    }
+	}
+	else {
+	    $self->throw("$dbi is not a valid DBI locator.\n".
+			 "You do not have DBSTAG_DBIMAP_FILE set\n");
+	}
+    }
+    return $dbi;
+}
+
+sub find_template {
+    my $self = shift;
+    my $tname = shift;
+    my $path = $ENV{DBSTAG_TEMPLATE_DIRS} || '.';
+    my @dirs = split(/:/, $path);
+    my $template;
+  FIND:
+    foreach my $dir (@dirs) {
+	foreach my $fn ("$dir/$tname.stg", "$dir/$tname") {
+	    if (-f $fn) {
+		require "DBIx/DBStag/SQLTemplate.pm";
+		$template = DBIx::DBStag::SQLTemplate->new;
+		$template->parse($fn);
+		last FIND;
+	    }
+	}
+    }
+    if (!$template) {
+	$self->throw("Could not find template \"$tname\" in: $path");
+    }
+    return $template;
 }
 
 sub setup {
@@ -976,13 +1058,23 @@ sub selectall_sxpr {
 # ---------------------------------------
 sub selectall_stag {
     my $self = shift;
-    my ($sql, $nesting) = 
-      rearrange([qw(sql nesting)], @_);
+    my ($sql, $nesting, $bind, $template) = 
+      rearrange([qw(sql nesting bind template)], @_);
     my $parser = $self->parser;
+
+    my $sth;
+    my @exec_args = ();
+    $template;
+    if (ref($sql)) {
+	$template = $sql;
+    }
+    if ($template) {
+	($sql, @exec_args) = $template->get_sql_and_args($bind);
+    }
     trace 0, "parsing: $sql\n";
 
     # PRE-parse SQL statement for stag-specific extensions
-    if ($sql =~ /(.*)use\s+nesting\s*(.*)/i) {
+    if ($sql =~ /(.*)\s+use\s+nesting\s*(.*)/si) {
 	my ($pre, $post) = ($1, $2);
 	my ($extracted, $remainder) =
 	  extract_bracketed($post, '()');
@@ -993,9 +1085,11 @@ sub selectall_stag {
 	$sql = "$pre $remainder";
     }
 
+
     # get the parsed SQL SELECT statement as a stag node
     my $stmt = $parser->selectstmt($sql);
-    trace 0, "parsed\n";
+    trace 0, "parsed: $sql\n";
+#    trace 0, $stmt->xml;
     my $dbschema = $self->dbschema;
 
     $self->last_stmt($stmt);
@@ -1219,11 +1313,25 @@ sub selectall_stag {
     # ---- end of column fetching ---
 
     trace(0, "COLS:@cols");
-    trace(0, "SQL:$sql");
 
     # --- execute SQL SELECT statement ---
+    if ($template) {
+	$sth = $template->cached_sth->{$sql};
+	if (!$sth) {
+	    $sth = $self->dbh->prepare($sql);
+	    $template->cached_sth->{$sql} = $sth;	  
+	}
+#	($sql, $sth, @exec_args) = 
+#	  $template->prepare($self->dbh, $bind);
+    }
+    my $sql_or_sth = $sql;
+    if ($sth) {
+	$sql_or_sth = $sth;
+    }
+    trace(0, "SQL:$sql_or_sth");
+    trace(0, "Exec_args: @exec_args") if $sth;
     my $rows =
-      $self->dbh->selectall_arrayref($sql);
+      $self->dbh->selectall_arrayref($sql_or_sth, undef, @exec_args);
     trace(0, sprintf("Got %d rows\n", scalar(@$rows)));
 
     # --- reconstruct tree from relations
@@ -1711,6 +1819,9 @@ sub make_a_tree {
     }
 }
 
+
+# -------- GENERAL SUBS -----------
+
 sub esctab {
     my $w=shift;
     $w =~ s/\t/__MAGICTAB__/g;
@@ -2081,10 +2192,10 @@ sub selectgrammar {
                        ])
          }
            | <error>
-         joinqual: /using\s+/i cols
+         joinqual: /using\s+/i '(' cols ')'
            { N(qual =>[
                        [type=>'using'],
-                       [expr=>"@{$item[2]}"]
+                       [expr=>"@{$item[3]}"]
                       ])
          }
            | <error>
@@ -2663,6 +2774,17 @@ TODO - metadata help
 Takes data from a file (Supported formats: XML, Sxpr, IText - see
 L<Data::Stag>) and generates a relational schema in the form of SQL
 CREATE TABLE statements.
+
+=back
+
+=head1 ENVIRONMENT VARIABLES
+
+=over
+
+=item DBSTAG_TRACE
+
+setting this environment will cause all SQL statements to be printed
+on STDERR
 
 =back
 

@@ -6,7 +6,7 @@ BEGIN {
     # as a fallback
     eval { require Test; };
     use Test;    
-    plan tests => 11;
+    plan tests => 17;
 }
 use DBIx::DBStag;
 use FileHandle;
@@ -14,6 +14,49 @@ use strict;
 
 my $dbh = DBIx::DBStag->new;
 
+if (1) {
+    my $sql =
+      q[
+	SELECT *
+	FROM
+	dna     INNER JOIN    contig  USING (dna_id)
+        NATURAL JOIN z
+	WHERE   contig_id = 5
+
+       ];
+    
+    my $s = $dbh->parser ->selectstmt($sql);
+    print $s->sxpr; 
+    my @cols = $s->get_cols->get_col;
+    ok(@cols == 1);
+    ok($cols[0]->get_name eq '*');
+    my $f = $s->get_from;
+    my @tbls = sort map {$_->get_name} $f->find_leaf;
+    print "T=@tbls\n";
+    ok(@tbls eq "3");
+}
+if (1) {
+    my $sql =
+      q[
+	SELECT *
+	FROM
+	dna     INNER JOIN    contig      USING (dna_id)
+	INNER JOIN    clone       USING (clone_id)
+
+	WHERE   contig_id = 5
+
+       ];
+    
+    my $s = $dbh->parser ->selectstmt($sql);
+    print $s->sxpr; 
+    my @cols = $s->get_cols->get_col;
+    ok(@cols == 1);
+    ok($cols[0]->get_name eq '*');
+    my $f = $s->get_from;
+    my @tbls = sort map {$_->get_name} $f->find_leaf;
+    print "T=@tbls\n";
+    ok(@tbls eq "3");
+}
 if (1) {
     my $sql =
       q[
@@ -57,7 +100,7 @@ if (1) {
     ok($cols[0]->get_func->get_args->get_col->get_name eq 'x.foo');
     ok($cols[1]->get_func->get_args->get_col->get_name eq 'bar');
 }
-if (1) {
+if (0) {
 
     # TODO - expressions
     my $sql =

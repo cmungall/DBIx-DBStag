@@ -6,9 +6,13 @@ selectall_xml.pl
 
 =head1 SYNOPSIS
 
-  selectall_xml.pl -d "dbi:Pg:dbname=mydb;host=localhost" "SELECT * FROM a NATURAL JOIN b"
+  selectall_xml.pl [-d <dbi>] [-f file of sql] [-nesting|n <nesting>] SQL
 
 =head1 DESCRIPTION
+
+Example:
+  selectall_xml.pl -d "dbi:Pg:dbname=mydb;host=localhost"\
+        "SELECT * FROM a NATURAL JOIN b"
 
 
 =head1 ARGUMENTS
@@ -21,6 +25,7 @@ use strict;
 
 use Carp;
 use DBIx::DBStag;
+use Data::Dumper;
 use Getopt::Long;
 
 my $debug;
@@ -29,12 +34,20 @@ my $db;
 my $nesting;
 my $show;
 my $file;
+my $user;
+my $pass;
+my $template;
+my $where;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
            "show"=>\$show,
 	   "nesting|n=s"=>\$nesting,
 	   "file|f=s"=>\$file,
+	   "user|u=s"=>\$user,
+	   "pass|p=s"=>\$pass,
+	   "template|t=s"=>\$template,
+	   "where|w=s"=>\$where,
           );
 if ($help) {
     system("perldoc $0");
@@ -42,7 +55,7 @@ if ($help) {
 }
 
 my $dbh = 
-  DBIx::DBStag->connect($db);
+  DBIx::DBStag->connect($db, $user, $pass);
 my $sql;
 if ($file) {
     open(F, $file) || die $file;
@@ -56,7 +69,47 @@ if (!$sql) {
     print STDERR "Reading SQL from STDIN...\n";
     $sql = <STDIN>;
 }
-my $xml = $dbh->selectall_xml($sql, $nesting);
+if ($sql =~ /^\/(.*)/) {
+    # shorthand for a template
+    $template = $1;
+    $sql = '';
+}
+my $xml;
+my @sel_args = ($sql, $nesting);
+if ($template) {
+    $template =
+      DBIx::DBStag->find_template($template);
+    if ($where) {
+	$template->set_clause(where => $where);
+    }
+
+    my @args = ();
+    my %argh = ();
+    while (my $arg = shift @ARGV) {
+	if ($arg =~ /(.*)=(.*)/) {
+	    $argh{$1} = $2;
+	}
+	else {
+	    push(@args, $arg);
+	}
+    }
+    my $bind = \@args;
+    if (%argh) {
+	$bind = \%argh;
+	if (@args) {
+	    die("can't used mixed argument passing");
+	}
+    }
+    @sel_args =
+      ($template, $nesting, $bind);
+}
+eval {
+    $xml = $dbh->selectall_xml(@sel_args);
+};
+if ($@) {
+    print "FAILED\n$@";
+}
+
 $dbh->disconnect;
 if ($show) {
     print $dbh->last_stmt->xml;

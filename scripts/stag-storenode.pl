@@ -125,20 +125,33 @@ use Getopt::Long;
 my $debug;
 my $help;
 my $db;
+my $unit;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
+	   "unit|u=s"=>\$unit,
           );
 if ($help) {
     system("perldoc $0");
     exit 0;
 }
 
-my $dbh = 
-  DBIx::DBStag->connect($db);
+print STDERR "Connecting to $db\n";
+my $dbh = DBIx::DBStag->connect($db);
 foreach my $fn (@ARGV) {
-    my $stag = Data::Stag->parse($fn);
-    $dbh->storenode($stag);
+    if ($unit) {
+	my $H = Data::Stag->makehandler($unit=>sub {
+					    my $self = shift;
+					    my $stag = shift;
+					    $dbh->storenode($stag);
+					    $dbh->commit;
+					});
+	Data::Stag->parse(-file=>$fn, -handler=>$H);
+    }
+    else {
+	my $stag = Data::Stag->parse($fn);
+	$dbh->storenode($stag);
+    }
 #    my @kids = $stag->kids;
 #    foreach (@kids) {
 #        $dbh->storenode($_);
