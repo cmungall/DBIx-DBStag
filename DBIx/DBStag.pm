@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.37 2004/10/27 22:11:51 cmungall Exp $
+# $Id: DBStag.pm,v 1.38 2004/10/29 23:43:55 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -3869,7 +3869,33 @@ those inserts will be cached and used. This means you can have the
 same element twice. However, the load must take place in one session,
 otherwise the contents of memory will be lost
 
-=cut
+=head2 clear_cache
+
+  Usage   - $dbh->clear_cache;
+  Returns - 
+  Args    - none
+
+Clears the in-memory cache
+
+Caches are not automatically managed - the API user is responsible for
+making suring the cache does not get too big
+
+=head2 cache_summary
+
+  Usage   - print $dbh->cache_summary->xml
+  Returns -  L<Data::Stag>
+  Args    - 
+
+Gives a summary of the size of the in-memory cache by keys. This can
+be used for automatic cache management:
+
+  $person_cache = $dbh->cache_summary->get_person;
+  my @index_nodes = $person_cache->tnodes;
+  foreach (@index_nodes) {
+    if ($_->data > MAX_PERSON_CACHE_SIZE) {
+      $dbh->clear_cache;
+    }
+  }
 
 =head1 SQL TEMPLATES
 
