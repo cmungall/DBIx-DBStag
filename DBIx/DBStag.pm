@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.16 2003/08/20 19:21:50 cmungall Exp $
+# $Id: DBStag.pm,v 1.17 2003/09/09 14:49:00 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1415,6 +1415,9 @@ sub selectall_stag {
 	$template = $sql;
     }
     if ($template) {
+	if (!ref($template)) {
+	    $template = $self->find_template($template);
+	}
 	($sql, @exec_args) = $template->get_sql_and_args($bind);
     }
     trace 0, "parsing: $sql\n";
@@ -2835,6 +2838,9 @@ Or from the command line:
 This module is for mapping from databases to Stag objects (Structured
 Tags - see L<Data::Stag>), which can also be represented as XML. It
 has two main uses:
+
+For a tutorial on using DBStag to build and query relational databases
+from XML sources, please see L<DBIx::DBStag::Cookbook>
 
 =over
 
