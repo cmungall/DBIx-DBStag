@@ -86,13 +86,13 @@ foreach my $fn (@ARGV) {
     if ($fn eq '-' && !$parser) {
 	$parser = 'xml';
     }
+    my $H;
     if (@units) {
-        my $H;
-	my $storehandler = Data::Stag->makehandler(
+        my $storehandler = Data::Stag->makehandler(
                                                    map {
                                                        $_ =>sub{store(@_)};
                                                    } @units
-                                                  );
+                                               );
         if ($thandler) {
             $H = Data::Stag->chainhandlers([@units],
                                            $thandler,
@@ -101,18 +101,30 @@ foreach my $fn (@ARGV) {
         else {
             $H = $storehandler;
         }
-        Data::Stag->parse(-format=>$parser,-file=>$fn, -handler=>$H);
     }
     else {
-        print STDERR "WARNING! Slurping whole file into memory may be inefficient; consider -u\n";
-        my $stag;
-        my @pargs = (-format=>$parser,-file=>$fn);
-        push(@pargs, -handler=>$thandler) if $thandler;
-	$stag = Data::Stag->parse(@pargs);
-	$dbh->storenode($stag);
-	$dbh->commit
-          unless $autocommit;
+        $H = Data::Stag->makehandler;
+        $H->catch_end_sub(sub {
+                              my ($handler,$stag) = @_;
+                              if ($handler->depth == 1) {
+                                  store($handler,$stag);
+                                  return;
+                              }
+                              return $stag;
+                          });
     }
+    Data::Stag->parse(-format=>$parser,-file=>$fn, -handler=>$H);
+#    }
+#    else {
+#        print STDERR "WARNING! Slurping whole file into memory may be inefficient; consider -u\n";
+#        my $stag;
+#        my @pargs = (-format=>$parser,-file=>$fn);
+#        push(@pargs, -handler=>$thandler) if $thandler;
+#	$stag = Data::Stag->parse(@pargs);
+#	$dbh->storenode($stag);
+#	$dbh->commit
+#          unless $autocommit;
+#    }
 #    my @kids = $stag->kids;
 #    foreach (@kids) {
 #        $dbh->storenode($_);

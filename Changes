@@ -42,3 +42,6 @@ Version 0.07
 2004-02-09      - [cjm] added cache option to storenode.pl
                 -       escapes tabs and newlines with -rows switch
                 -       added check-resources.pl
+
+2004-03-06      - [cjm] added support for loading XORT-style XML
+                -       nodes are only made dbsafe if requested

@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.40 2005/02/09 19:49:30 cmungall Exp $
+# $Id: DBStag.pm,v 1.41 2005/03/07 23:00:40 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -12,7 +12,6 @@
 
 package DBIx::DBStag;
 
-
 use strict;
 use vars qw($VERSION @ISA @EXPORT_OK %EXPORT_TAGS $DEBUG $AUTOLOAD);
 use Carp;
@@ -22,7 +21,7 @@ use DBIx::DBSchema;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
-$VERSION="0.07";
+$VERSION='0.07';
 
 
 our $DEBUG;
@@ -420,6 +419,64 @@ sub get_pk_col {
                 "Maybe DBIx::DBSchema does not work with your database?");
     }
     return $tableobj->primary_key;
+}
+
+sub is_table {
+    my $self = shift;
+    my $tbl = shift;
+    return 1 if $self->dbschema->table($tbl);
+}
+
+sub is_col {
+    my $self = shift;
+    my $col = shift;
+    if ($self->{_is_col_h}) {
+        return $self->{_is_col_h}->{$col}
+    }
+    my @tablenames = $self->dbschema->tables;
+    my @allcols = 
+      map {
+          $self->get_all_cols($_);
+      } @tablenames;
+    my %h = map {$_=>1} @allcols;
+    $self->{_is_col_h} = \%h;
+    return $self->{_is_col_h}->{$col};
+}
+
+# ASSUMPTION: pk names same as fk names
+sub is_fk_col {
+    my $self = shift;
+    my $col = shift;
+    # HACK!!!
+    # currently dbschema does not know about FKs
+    return 1 if $col =~ /_id$/;
+    if ($self->{_is_fk_col_h}) {
+        return $self->{_is_fk_col_h}->{$col}
+    }
+    my @tablenames = $self->dbschema->tables;
+    my %h = ();
+    foreach (@tablenames) {
+        my $pk = $self->dbschema->table($_)->primary_key;
+        $h{$pk} =1 if $pk;
+    }
+    $self->{_is_fk_col_h} = \%h;
+    return $self->{_is_fk_col_h}->{$col};
+}
+
+sub is_pk_col {
+    my $self = shift;
+    my $col = shift;
+    if ($self->{_is_pk_col_h}) {
+        return $self->{_is_pk_col_h}->{$col}
+    }
+    my @tablenames = $self->dbschema->tables;
+    my %h = ();
+    foreach (@tablenames) {
+        my $pk = $self->dbschema->table($_)->primary_key;
+        $h{$pk} =1 if $pk;
+    }
+    $self->{_is_pk_col_h} = \%h;
+    return $self->{_is_pk_col_h}->{$col};
 }
 
 sub get_all_cols {
@@ -974,6 +1031,9 @@ sub id_remap_idx {
     return $self->{_id_remap_idx};
 }
 
+# do the PK values in the XML represent the actual
+# internal db ids, or are they local to the document?
+# if the latter then we will create a id_remap_idx
 sub trust_primary_key_values {
     my $self = shift;
     $self->{_trust_primary_key_values} = shift if @_;
@@ -985,6 +1045,7 @@ sub make_stag_node_dbsafe {
     my $self = shift;
     my $node = shift;
     my $name = $node->name;
+    return if $name eq '@'; # leave attrs alone
     my $safename = $self->dbsafe($name);
     if ($name ne $safename) {
 	$node->name($safename);
@@ -1002,6 +1063,30 @@ sub dbsafe {
     $name =~ tr/a-z0-9_//cd;
     return $name;
 }
+
+# cache the attribute nodes as they are parsed
+#sub current_attribute_node {
+#    my $self = shift;
+#    $self->{_current_attribute_node} = shift if @_;
+#    return $self->{_current_attribute_node};
+#}
+
+# lookup table; macro ID => internal database ID
+sub macro_id_h {
+    my $self = shift;
+    $self->{_macro_id_h} = shift if @_;
+    $self->{_macro_id_h} = {} 
+      unless $self->{_macro_id_h};
+    return $self->{_macro_id_h};
+}
+
+# xort-style XML; set if an attribute is encountered
+sub xort_mode {
+    my $self = shift;
+    $self->{_xort_mode} = shift if @_;
+    return $self->{_xort_mode};
+}
+
 
 #'(t1
 #  (foo x)
@@ -1044,13 +1129,23 @@ sub dbsafe {
 
 # alg: store t2, store t1
 
+# if set, will ensure that tbl/col names are transformed to be safe
+sub force_safe_node_names {
+    my $self = shift;
+    $self->{_force_safe_node_names} = shift if @_;
+    return $self->{_force_safe_node_names};
+}
+
+
 # recursively stores a Data::Stag tree node in the database
 sub storenode {
     my $self = shift;
     my $node = shift;
     my @args = @_;
     my $dupnode = $node->duplicate;
-    $self->make_stag_node_dbsafe($dupnode);
+
+    $self->make_stag_node_dbsafe($dupnode)
+      if $self->force_safe_node_names;
     $self->add_linking_tables($dupnode);
     $self->_storenode($dupnode,@args);
 }
@@ -1058,6 +1153,7 @@ sub storenode {
 sub _storenode {
     my $self = shift;
     my $node = shift;
+    my $opt = shift;
     if (!$node) {
         confess("you need to pass in a node!");
     }
@@ -1076,6 +1172,40 @@ sub _storenode {
         }
         return;
     }
+
+    # check for XORT-style attributes
+#    if ($element eq '@') {
+#        # is this check required???
+#        $self->current_attribute_node($node);
+#        $self->xort_mode(1);
+#        return;
+#    }
+    my $current_attribute_node;
+    unless ($node->isterminal) {
+        my @kids = $node->kids;
+        my $changed = 0;
+        @kids =
+          map {
+              if ($_->element eq '@') {
+                  $self->xort_mode(1);
+                  $current_attribute_node = $_;
+                  $changed = 1;
+                  trace(0, "GOT ATTR NODE");
+                  ();  # omit
+              }
+              else {
+                  $_;    # unchanged
+              }
+          } @kids;
+        $node->kids(@kids) if $changed;
+    }
+
+    my $operation; # directive: force/update/lookup
+    if ($current_attribute_node){
+        $operation = 
+          $current_attribute_node->sget_op;
+    }
+
     trace(0, "STORING $element\n", $node->xml) if $TRACE;
     my $tracenode = $self->tracenode || '';
     my $tracekeyval;
@@ -1109,10 +1239,46 @@ sub _storenode {
     # primary keys, to use as foreign keys in
     # the current relation)
 
-    # store kids first
+    # store non-terminal subnodes first
     my @ntnodes = $node->ntnodes;
+
+    # keep track of nodes that have been assigned xort-style
+    my %assigned_node_h;
+
+    # some nodes may have been assigned by the calling process
+    # (eg if the supernode is refered to by a fk from the current table)
+    %assigned_node_h = %{$opt->{assigned_node_h} || {}};
+
     my @delayed_store = ();
     foreach my $nt (@ntnodes) {
+        # xort-style XML; nodes can be nested inside a non-terminal
+        # node corresponding to a FK column
+        #
+        # check all sub-nodes; if any of them are nonterminal and correspond
+        # to a column (not a table) then add the sub-node and use the pk id
+        # as the returned value
+        # note: we have to explicitly check the col is not also a table
+        # since some dbs (eg go db) have col names the same as tbl names
+        if ($self->is_col($nt->name) && 
+            !$nt->isterminal &&
+            !$self->is_table($nt->name)) {
+            my @kids = $nt->kids;
+            if (@kids != 1) {
+                $self->throw("non-terminal pk node should have one subnode only; ".
+                             $nt->name." has ".scalar(@kids));
+            }
+            my $sn_val = $self->_storenode(shift @kids);
+            if (!defined($sn_val)) {
+                $self->throw("no returned value for ".$nt->name);
+            }
+            # replace node with return pk ID value
+            $nt->data($sn_val);
+
+            $assigned_node_h{$nt->name} = 1;
+            # skip this ntnode - it is now a tnode
+            next;
+        }
+
         # we want to PRE-STORE any ntnodes that
         # are required for foreign key relationships
         # within this node;
@@ -1244,16 +1410,33 @@ sub _storenode {
     # all FKs refering to this get remapped too
     my @tnodes = $node->tnodes;
     my %remap = ();   # indexed by column name; new PK value
-    unless ($self->trust_primary_key_values) {
+    if (!$self->trust_primary_key_values) {
         foreach my $tnode (@tnodes) {
-            if ($tnode->name eq $pkcol) {
+            if ($self->is_fk_col($tnode->name) && $self->xort_mode) {
+                my $v = $tnode->data;
+                # IF this tnode was originally an ntnode that
+                # was collapsed to a pk val, xort style, do not
+                # try and map it to a previously assigned macro 
+                if ($assigned_node_h{$tnode->name}) {
+                    trace(0, "ALREADY CALCULATED; not a Macro ID:$v;; in $element/".$tnode->name) if $TRACE;
+                }
+                else {
+                    my $actual_id =
+                      $self->macro_id_h->{$v};
+                    if (!defined($actual_id)) {
+                        $self->throw("XORT-style Macro ID:$v is undefined;; in $element/".$tnode->name);
+                    }
+                    $tnode->data($actual_id);
+                }
+            }
+            elsif ($tnode->name eq $pkcol) {
                 my $v = $tnode->data;
                 trace(0, "REMAP $pkcol: $v => ? [do not know new value yet]") if $TRACE;
                 $remap{$tnode->name} = $v; # map after insert/update
                 $node->unset($tnode->name); # discard placeholder
             } else {
-                if ($tnode->name =~ /_id$/) {
-                    # hack!! need proper FK refs...
+                if ($self->is_fk_col($tnode->name)) {
+                    # hack!! need proper FK refs...; DBSchema wont do this
                     my $colvalmap = $self->id_remap_idx;
                     #my $colvalmap = $self->get_mapping_for_col($nt->elememt);
                     if ($colvalmap) {
@@ -1379,6 +1562,12 @@ sub _storenode {
             next;
         }
 
+        # if an xort-style attribute has op=insert
+        # this is the same as a bulkload
+        if ($operation && $operation eq 'insert') {
+            next;
+        }
+
         # already tried PK
 #        if (scalar(@$uset) == 1 && 
 #            $uset->[0] eq $pkcol) {
@@ -1401,19 +1590,31 @@ sub _storenode {
         # -- COMMENTED OUT cjm 20041012
         # mysql auto-creates defaults for non-null fields;
         # we cannot use this code:
+        # UNCOMMENTED 20050304
 
         # -- make null value part of the key
         # -- ADDED 20041012 - make null 0/''
-#        foreach (keys %constr) {
-#            if (!defined($constr{$_})) {
-#                my $colobj = $tableobj->column($_);
-#                my $default = $colobj->default; 
-#                if (defined $default) {
-#                    $constr{$_} = $colobj->default; 
-#                    trace(0, "USING DEFAULT $_ => $constr{$_}") if $TRACE;
-#                }
-#            }
-#        }
+        
+        foreach (keys %constr) {
+            # in pg, pk cols are sequences with defaults nextval
+            # skip these
+            next if $self->is_pk_col($_);
+            if (!defined($constr{$_})) {
+                my $colobj = $tableobj->column($_);
+                my $default_val = $colobj->default; 
+                if (defined $default_val) {
+                    # problem with DBIx::DBSchema
+                    if ($default_val =~ /^\'(.*)\'::/) {
+                        trace(0, "FIXING DEFAULT: $default_val => $1") if $TRACE;
+                        $default_val = $1;
+                    }
+                    $constr{$_} = $default_val; 
+                    trace(0, "USING DEFAULT $_ => $constr{$_}") if $TRACE;
+                }
+            }
+        }
+
+        # TODO: check cases eg dbxref in chado; null default values...?
         next if grep { !defined($_) } values %constr;
 
         %unique_constr = %constr;
@@ -1531,7 +1732,26 @@ sub _storenode {
     # or inserting, depending on whether a suitable
     # update constraint has been found
 
+    my $this_op;
     if (%unique_constr) {
+        $this_op = 'update';
+    }
+    else {
+        $this_op = 'insert';
+    }
+    if (defined $operation) {
+        if ($operation eq 'force') {
+            $operation = $this_op;
+        }
+        else {
+            # update/lookup/insert
+            # insert: already dealt with
+        }
+    }
+    else {
+        $operation = $this_op;
+    }
+    if ($operation eq 'update') {
         # ** UPDATE **
         if ($self->noupdate_h->{$element}) {
             if ($tracekeyval) {
@@ -1571,7 +1791,7 @@ sub _storenode {
                 }
             }
             else {
-                trace(0, sprintf("NOCHANGE on %s (We have %s)",
+                trace(0, sprintf("NOCHANGE on %s (We have %s) id=$id",
                                  $element,
                                  join('; ',values %unique_constr)
                             )) if $TRACE;
@@ -1580,7 +1800,7 @@ sub _storenode {
                 }
             }
         }
-    } else {
+    } elsif ($operation eq 'insert') {
         # ** INSERT **
         if (%store_hash) {
             $id =
@@ -1618,8 +1838,24 @@ sub _storenode {
                 trace(0, "CACHING: $element") if $TRACE;
             }
         }
-
-    }  # -- end of UPDATE/INSERT
+    }
+    elsif ($operation eq 'delete') {
+        if (%unique_constr) {
+            $self->deleterow($element,\%unique_constr);
+        }
+        else {
+            $self->throw("Cannot find row to delete it:\n".$node->xml);
+        }
+    }
+    elsif ($operation eq 'lookup') {
+        # lookup: do nothing, already have ID
+        if (!$id) {
+            $self->throw("lookup: no ID;; could not find this node in db:\n".$node->xml);
+        }
+    }
+    else {
+        $self->throw("cannot do op: $operation");
+    } # -- end of UPDATE/INSERT/LOOKUP
     
 
     # -- DELAYED STORE --
@@ -1657,9 +1893,20 @@ sub _storenode {
             $sn->set($fk, $id);
 
             trace(0, "NOW TIME TO STORE [curr pk val = $id] [fkcol = $fk] ", $sn->xml) if $TRACE;
-            $self->_storenode($sn);
+            $self->_storenode($sn,{assigned_node_h=>{$fk=>1}});
         }
     } # -- end of @delayed_store
+
+    if ($current_attribute_node) {
+        if ($id) {
+            my $macro_id = $current_attribute_node->sget_id;
+            if (!$macro_id) {
+                $self->warn("attribute node without ID:".$current_attribute_node->sxpr);
+            }
+            $self->macro_id_h->{$macro_id} = $id;
+            trace(0, "SETTING MACRO ID MAP: $macro_id => $id") if $TRACE;
+        }
+    }
 
     return $id;
 }
@@ -2856,6 +3103,41 @@ sub updaterow {
     return $sth->execute(@bind) || confess($sql."\n\t".$sth->errstr);
 }
 
+sub deleterow {
+    my $self = shift;
+    my ($table, $where) = @_;
+
+    confess("must specify table") unless $table;
+
+    my $dbh = $self->dbh;
+
+    # array of WHERE cols
+    if (ref($where)) {
+        if (ref($where) eq "HASH") {
+            $where =
+              [
+               map {
+                   "$_ = ".$dbh->quote($where->{$_})
+               } keys %$where
+              ];
+        }
+    }
+    else {
+        $where = [$where];
+    }
+    confess("must specify constraints") unless @$where;
+
+    my $sql =
+      sprintf("DELETE FROM %s WHERE %s",
+              $table,
+              join(' AND ', @$where),
+             );
+    trace(0, "SQL:$sql") if $TRACE;
+
+    my $sth = $dbh->prepare($sql) || confess($sql."\n\t".$dbh->errstr);
+    return $sth->execute() || confess($sql."\n\t".$sth->errstr);
+}
+
 #$::RD_HINT = 1;
 
 $::RD_AUTOACTION = q { [@item] };
@@ -3700,6 +3982,113 @@ Recursively stores a stag tree structure in the database.
 The database schema is introspected for most of the mapping data, but
 you can supply your own (see later)
 
+The Stag tree/XML must be a direct mapping of the relational
+schema. Column and table names must correspond to element
+names. Elements may be nested. Different styles of XML-Relational
+mapping may be used: XORT-style and the more compact Stag-style
+
+=head3 XORT-style mapping
+
+With a XORT-style mapping, elements corresponding to tables can be
+nested under elements corresponding to foreign keys.
+
+For example, if the relational schema has a foreign key from table
+B<person> to table B<address>, the following XML is permissable:
+
+  <person>
+    <name>..</name>
+    <address_id>
+      <address>
+      </address>
+    </address_id>
+  </person>
+
+The B<address> node will be stored in the database and collapsed to
+whatever the value of the primary key is.
+
+=head3 Stag-style mapping
+
+Stag-style is more compact, but sometimes relies on the presence of a
+B<dbstag_metadata> element to specify how foreign keys are mapped
+
+=head3 Operations
+
+Operations are specified as attributes inside elements, specifying
+whether the nod should be inserted, updated, looked up or
+stored/forced. Operations are optional (default is force/store).
+
+  <person op="insert">
+   <name>fred</name>
+   <address_id op="lookup">
+    <streetaddr>..</>
+    <city>..</>
+   </address_id>
+  </person>
+
+The above will always insert into the person table (which may be quite
+dangerous; if an entry with the same unique constraint exists, an
+error will be thrown). Assuming (streetaddr,city) is a unique
+constraint for the address table, this will lookup the specified
+address (and not modify the table) and use the returned pk value for
+the B<person.address_id> foreign key
+
+The operations are:
+
+=over
+
+=item force (default)
+
+looks up (by unique constraints) first; if exists, will do an
+update. if does not exist, will do an insert
+
+=item insert
+
+insert only. DBMS will throw error if row with same UC exists
+
+=item update
+
+update only. DBMS will throw error if a row the with the specified UC
+cannot be found
+
+=item lookup
+
+finds the pk value using one of the unique constraints present in the
+XML node
+
+=item delete NOT IMPLEMENTED
+
+deletes row that has matching UC
+
+=back
+
+Operations can be used in either XORT or Stag mode
+
+=head3 Macros
+
+Macros can be used with either XORT or Stag style mappings. Macros
+allow you to refer to the same node later on in the XML
+
+  <person op="lookup" id="joe">
+    <name>joe</name>
+  </person>
+  <person op="lookup" id="fred">
+    <name>fred</name>
+  </person>
+  ...
+  <person_relationship>
+    <type>friend</type>
+    <person1_id>joe</person1_id>
+    <person2_id>fred</person2_id>
+  </person_relationship>
+
+Assuming B<name> is a unique constraint for B<person>, and
+person_relationship has two foreign keys named person1_id and
+person2_id linking to the person table, DBStag will first lookup the
+two person rows by name (throwing an error if not present) and use the
+returned pk values to populate the person_relationship table
+
+=head3 How it works
+
 Before a node is stored, certain subnodes will be pre-stored; these are
 subnodes for which there is a foreign key mapping FROM the parent node
 TO the child node. This pre-storage is recursive.
@@ -3716,10 +4105,15 @@ Subsequently, all subnodes that were not pre-stored are now
 post-stored.  The primary key for the existing node will become
 foreign keys for the post-stored subnodes.
 
-=head3 Database table and column name restrictions
+=head2 force_safe_node_names
 
-Before storage, all node names are made B<DB-safe>; they are
-lowercased, and the following transform is applied:
+  Usage   - $dbh->force_safe_node_names(1);
+  Returns - bool
+  Args    - bool [optional]
+
+If this is set, then before storage, all node names are made
+B<DB-safe>; they are lowercased, and the following transform is
+applied:
 
   tr/a-z0-9_//cd;
 
@@ -3773,6 +4167,9 @@ mapping. For example:
 
 sets the conf file containing the stag-relational mappings
 
+This is not of any use for a XORT-style mapping, where foreign key
+columns are explicitly stated
+
 See mapping() above
 
 The file contains line like:
@@ -3810,6 +4207,8 @@ between databases, even if the rest of the data does.
 
 (If you do not use surrogate primary key columns in your load xml,
 then you can ignore this accessor)
+
+You should NOT use this method in conjunction with Macros
 
 If you use primary key columns in your XML, and the primary keys are
 not surrogate, then youshould set this.  If this accessor is set to

@@ -21,6 +21,7 @@ our $driver;
 
 @EXPORT = qw(connect_to_cleandb dbh drop cvtddl);
 
+
 sub dbh {
     # this file defines sub connect_args()
     unless (defined(do 'db.config')) {
@@ -66,6 +67,7 @@ sub drop {
         die $@ if $@;
         die "Could not reade db.config: $!\n";
     }
+    # this sub is defined in config file
     my $cmd = recreate_cmd();
     if (system($cmd)) {
 	print STDERR "PROBLEM recreating using: $cmd\n";
