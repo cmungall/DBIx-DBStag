@@ -19,7 +19,7 @@ my $dbname = '';
 my $connect;
 my $term;
 my @hist = ();
-my $XTERMMODE = 1;
+my $XTERMMODE = 0;
 my $TBLMODE = 0;
 
 my $cscheme =
@@ -32,10 +32,15 @@ my $cscheme =
    'property' => 'green',
   };
 
+my $dbimap;
 GetOptions(
            "dbname|d=s"=>\$dbname,
            "connect|c"=>\$connect,
+	   "dbimap=s"=>\$dbimap,
           );
+if ($dbimap) {
+    $ENV{DBSTAG_DBIMAP_FILE} = $dbimap;
+}
 
 # parent dbh
 my $sdbh = 
@@ -361,7 +366,21 @@ sub dshowtemplates {
 	     my $fh = shift;
 	     my $t = shift @T;
 	     return 0 unless $t;
+	     my $n = $t->name;
+	     my $hdr =
+	       hilite('comment',
+		      join("\n", 
+			   "+" x 60,
+			   "++++  $n". (' ' x (50 - length($n))). "++++",
+			   ("+" x 60),
+			   "\n"));
+	     my $ftr =
+	       hilite('comment',
+		      "// -- END OF TEMPLATE --\n". ("=" x 60));
+	     print $fh $hdr;
 	     $t->show($fh, $cscheme, sub { Term::ANSIColor::color(@_)});
+	     print $fh $ftr;
+	     print $fh "\n";
 	 });
 #    my $fn;
 #    my $fh = \*STDOUT;

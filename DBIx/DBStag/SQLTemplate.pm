@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.8 2003/08/02 20:07:21 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.9 2003/08/03 08:39:12 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -130,6 +130,13 @@ sub stag_props {
     my $self = shift;
     $self->{_stag_props} = shift if @_;
     return $self->{_stag_props};
+}
+
+sub desc {
+    my $self = shift;
+    my $P = $self->properties || [];
+    my ($p) = grep {$_->{name} =~ /^desc/} @$P;
+    return $p->{value} if $p;
 }
 
 
@@ -530,6 +537,13 @@ sub prepare {
     return ($sql, $sth, @exec_args);
 }
 
+sub parsestr {
+    my $self = shift;
+    my $io = IO::String->new;
+    print $io shift;
+    $self->_parsefh($io);
+}
+
 sub parse {
     my $self = shift;
     my $fn = shift;
@@ -539,7 +553,12 @@ sub parse {
     $name =~ s/.*\///;
     $name =~ s/\.\w+$//;
     $self->name($name);
+    $self->_parsefh($fh);
+}
 
+sub _parsefh {
+    my $self = shift;
+    my $fh = shift;
     my $eosql_tag_idx;
     my $tag = {name=>'', value=>''};
     my @tags = ();
@@ -572,7 +591,7 @@ sub parse {
     }
     my @clauses = splice(@tags, 0, $eosql_tag_idx);
     if (!@clauses) {
-	$self->throw("No SQL in $fn");
+	$self->throw("No SQL");
     }
     if (@clauses == 1 && !$clauses[0]->{name}) {
 	my $j = join('|',
@@ -623,44 +642,32 @@ sub show {
     my $n = $t->name;
     my $clauses = $t->sql_clauses;
     my $props = $t->properties;
-    my $c0 = color('reset');
-    my $c1 = color($cscheme{variable});
-    my $c2 = color($cscheme{keyword});
-    my $c3 = color($cscheme{block});
-    sub color {
-	return $colorfunc->(@_);
-    }
-    sub keyword {
+    my $keyword = sub {
 	my $color = $cscheme{keyword};
-	color($color) . "@_" . color('reset');
-    }
-    sub comment {
+	$colorfunc->($color) . "@_" . $colorfunc->('reset');
+    };
+    my $comment = sub {
 	my $color = $cscheme{comment};
-	color($color) . "@_" . color('reset');
-    }
-    sub block {
-	my $color = $cscheme{block};
-	color($color) . "@_" . color('reset');
-    }
-    sub property {
+	$colorfunc->($color) . "@_" . $colorfunc->('reset');
+    };
+    my $property = sub {
 	my $color = $cscheme{property};
-	color($color) . "@_" . color('reset');
-    }
+	$colorfunc->($color) . "@_" . $colorfunc->('reset');
+    };
+    my $c0 = $colorfunc->('reset');
+    my $c1 = $colorfunc->($cscheme{variable});
+    my $c2 = $colorfunc->($cscheme{keyword});
+    my $c3 = $colorfunc->($cscheme{block});
 
 #    my $c0 = 'reset';
 #    my $c1 = $cscheme{variable};
 #    my $c2 = $cscheme{keyword};
 #    my $c3 = $cscheme{block};
 
-    print $fh comment("+" x 60), "\n";
-    print $fh comment("++++  "), keyword($n), ' ' x (50 - length($n)), comment("++++\n");
-    print $fh comment("+" x 60), "\n";
-
     foreach my $clause (@$clauses) {
 	my ($n, $c) = ($clause->{name}, $clause->{value});
-	print $fh keyword("$n ");
+	print $fh $keyword->("$n ");
 	if ($c =~ /\[.*\]/s) {
-#	    $c =~ s/(\[.*\])/block($1)/gse;
 	    $c =~ s/\[/$c3\[$c0/g;
 	    $c =~ s/\]/$c3\]$c0/g;
 	    $c =~ s/=\>/$c2=\>$c0/gs;
@@ -677,7 +684,7 @@ sub show {
 	while ($c =~ /(\S+)(\s*)(.*)/) {
 	    my ($w, $sp, $next) = ($1, $2, $3);
 	    if ($w =~ /^[A-Z]+$/) {
-		print $fh keyword($w);
+		print $fh $keyword->($w);
 	    }
 	    else {
 		print $fh $w;
@@ -687,17 +694,13 @@ sub show {
 	}
 	print $fh "\n";
     }
-    print $fh comment("// -- METADATA --\n");
+    print $fh $comment->("// -- METADATA --\n");
     foreach my $p (@$props) {    
 	my ($n, $v) = ($p->{name}, $p->{value});
-	print $fh property("$n: ");
+	print $fh $property->("$n: ");
 	print $fh $v;
 	print $fh "\n";
     }
-    print $fh comment("// -- END OF TEMPLATE --\n");
-    print $fh comment("=" x 60);
-#    print $fh "\n";
-    print $fh "$c0\n\L";
 }
 
 

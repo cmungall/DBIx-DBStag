@@ -25,6 +25,7 @@ use strict;
 use Carp;
 use Data::Stag qw(:all);
 use DBIx::DBStag;
+use FileHandle;
 use Getopt::Long;
 
 my $parser = "";
@@ -36,6 +37,7 @@ my $toperl;
 my $debug;
 my $help;
 my @link = ();
+my $ofn;
 GetOptions(
            "help|h"=>\$help,
            "parser|format|p=s" => \$parser,
@@ -44,6 +46,7 @@ GetOptions(
            "perl"=>\$toperl,
            "debug"=>\$debug,
            "link|l=s@"=>\@link,
+	   "transform|t=s"=>\$ofn,
           );
 if ($help) {
     system("perldoc $0");
@@ -52,12 +55,35 @@ if ($help) {
 
 my $db = DBIx::DBStag->new;
 
-my @files = @ARGV;
-foreach my $fn (@files) {
+my $fn = shift @ARGV;
+die "max 1 file" if @ARGV;
+autoddl($fn);
 
+sub autoddl {
+    my $fn = shift;
+    
     my $tree = 
       Data::Stag->parse($fn, 
                         $parser);
-    print $db->autoddl($tree, \@link);
+    my $ddl = $db->autoddl($tree, \@link);
+    my $transforms = $db->source_transforms;
+    if (@$transforms) {
+	if (!$ofn) {
+	    print STDERR "-- $fn requires transforms; consider running with -transform\n";
+	    foreach (@$transforms) {
+		print STDERR "-- SOURCE REQUIRES TRANSFORM: $_->[0] => $_->[1]\n";
+	    }
+	}
+	else {
+	    $tree->transform(@$transforms);
+	    my $W = $tree->getformathandler($handler || 'xml');
+	    my $ofh = FileHandle->new(">$ofn") || die("cannot write transformed file $ofn");
+	    $W->fh($ofh);
+#	    $W->fh(\*STDOUT);
+	    $tree->events($W);
+	    $ofh->close;
+	}
+    }
+    print $ddl;
 }
 
