@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.18 2003/11/11 03:54:59 cmungall Exp $
+# $Id: DBStag.pm,v 1.19 2004/01/31 01:36:40 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1604,6 +1604,10 @@ sub selectall_stag {
 	      if ($col) {
 		  $table = $col->get_table;
 	      }
+#	      if ($col_alias =~ /(\w+)__(\w+)/) {
+#		  $table = $1;
+#		  $col_alias = $2;
+#	      }
 	      $name = $table . '.' . $col_alias;
 	      # return:
 	      $name;
@@ -1689,6 +1693,16 @@ sub selectall_stag {
               $name
           }
       } $stmt->sgetnode_cols->getnode_col;
+
+    @cols =
+      map {
+	  if (/(\w+)__(\w+)/) {
+	      "$1.$2";
+	  }
+	  else {
+	      $_
+	  }
+      } @cols;
 
     # ---- end of column fetching ---
 
@@ -2496,7 +2510,16 @@ sub selectgrammar {
            | <error>
 
 	 selectcol: brackselectcol operator selectcol
-	   { $item[1]}
+	   {
+	       N(col=>[
+		       [func => [
+				 [name => $item[2]->[1]],
+				 [args => [$item[1],$item[3]]]
+				]
+		       ]
+		      ]);
+	   }
+###	   { $item[1]}
 	   | <error>
 	 selectcol: brackselectcol
 	   { $item[1]}

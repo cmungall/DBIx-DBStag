@@ -333,6 +333,8 @@ the name of a template; see above
 used to override the WHERE clause of the query; useful for combining
 with templates
 
+You can append to an existing where clause by using the prefix B<+>
+
 =item -s|select SELECT-COLS
 
 used to override the SELECT clause of the query; useful for combining

@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.15 2003/11/11 03:54:59 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.16 2004/01/31 01:36:40 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -99,7 +99,8 @@ sub set_clause {
     foreach my $clause (@$clauses) {
 	if (lc($clause->{name}) eq $ct) {
 	    if ($add && $clause->{value}) {
-		$clause->{value} .= " and $v";
+#		$clause->{value} .= " and $v";
+		$clause->{value} .= " $v";
 	    }
 	    else {
 		$clause->{value} = $v;
