@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.22 2004/04/02 04:03:32 cmungall Exp $
+# $Id: DBStag.pm,v 1.23 2004/04/02 04:12:07 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -2881,7 +2881,7 @@ __END__
 
 =head1 NAME
 
-  DBIx::DBStag - Automatic database to Stag/XML mapping
+  DBIx::DBStag - Relational Database to Hierarchical (Stag/XML) Mapping
 
 =head1 SYNOPSIS
 
@@ -2898,7 +2898,9 @@ __END__
                movie_to_star NATURAL JOIN
                star
 	      WHERE
-               movie.genre = 'sci-fi' AND star.lastname = 'Fisher';
+               movie.genre = 'sci-fi' AND star.lastname = 'Fisher'
+              USE NESTING
+               (set(studio(movie(star))))
 	     ];
   my $dataset = $dbh->selectall_stag($sql);
   my @studios = $dataset->get_studio;
@@ -2948,9 +2950,6 @@ This module is for mapping from databases to Stag objects (Structured
 Tags - see L<Data::Stag>), which can also be represented as XML. It
 has two main uses:
 
-For a tutorial on using DBStag to build and query relational databases
-from XML sources, please see L<DBIx::DBStag::Cookbook>
-
 =over
 
 =item Querying
@@ -2974,6 +2973,9 @@ metadata.
 XML can also be imported, and a relational schema automatically generated.
 
 =back
+
+For a tutorial on using DBStag to build and query relational databases
+from XML sources, please see L<DBIx::DBStag::Cookbook>
 
 =head2 HOW QUERYING WORKS
 
@@ -3128,7 +3130,7 @@ this way)
 Another way to achieve the same thing is to specify the desired tree
 structure using a DBStag specific SQL extension. The DBStag specific
 component is removed from the SQL before being presented to the
-DBMS. The extension is the 'USE NESTING' clause, which should come at
+DBMS. The extension is the B<USE NESTING> clause, which should come at
 the end of the SQL query (and is subsequently removed before
 processing by the DBMS).
 
@@ -3514,7 +3516,7 @@ Chris Mungall <F<cjm@fruitfly.org>>
 
 =head1 COPYRIGHT
 
-Copyright (c) 2002 Chris Mungall
+Copyright (c) 2004 Chris Mungall
 
 This module is free software.
 You may distribute this module under the same terms as perl itself
