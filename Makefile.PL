@@ -1,4 +1,4 @@
-#$Id: Makefile.PL,v 1.2 2003/04/23 04:38:13 cmungall Exp $
+#$Id: Makefile.PL,v 1.3 2003/04/30 05:50:58 cmungall Exp $
 
 # This Makefile.PL was cut-n-pasted from the DBIx::Abstract
 # Nakefile.PL, by Andrew Turner <turnera@cpan.org>
@@ -90,15 +90,24 @@ if (open(FILE, ">$fileName")) {
 
 WriteMakefile(
 	      'NAME'         => "DBIx",
+	      'DISTNAME'         => "DBIx-DBStag",
 	      'ABSTRACT'     => 'DBStag',
 	      'AUTHOR'       => 'Chris Mungall <cjm@fruitfly.org>',
-	      'dist'  => { COMPRESS    => 'gzip -9f',
-			   SUFFIX      => 'gz'},
+	      'dist'  => {
+				 'SUFFIX'       => ".gz",
+				 'DIST_DEFAULT' => 'all tardist',
+				 'COMPRESS'     => "gzip -9f" 
+                         },
 	      'VERSION_FROM' => "DBIx/DBStag.pm",
 	      'PREREQ_PM'    => {
 				 'Data::Stag'         => 0,
+				 'DBI'                => 0,
 				},
 	      'EXE_FILES'    => [
+                                 'scripts/selectall_xml.pl',
+                                 'scripts/selectall_html.pl',
+                                 'scripts/stag-autoddl.pl',
+                                 'scripts/stag-storenode.pl',
 				],
 	      
 	      clean => {
