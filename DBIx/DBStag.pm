@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.10 2003/06/06 07:39:45 cmungall Exp $
+# $Id: DBStag.pm,v 1.11 2003/07/16 21:35:12 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -43,6 +43,12 @@ sub dmp {
     print Dumper shift;
 }
 
+sub force {
+    my $self = shift;
+    $self->{_force} = shift if @_;
+    return $self->{_force};
+}
+
 
 sub new {
     my $proto = shift; 
@@ -74,6 +80,7 @@ sub connect {
     $self->dbh(DBI->connect($dbi, @_));
     # HACK
     $self->dbh->{RaiseError} = 1;
+    $self->dbh->{ShowErrorStatement} = 1;
     $self->setup;
     return $self;
 }
@@ -147,6 +154,7 @@ sub resources_hash {
     }
     return $rh;
 }
+
 
 sub resources_list {
     my $self = shift;
@@ -285,7 +293,7 @@ sub get_pk_col {
     my $self = shift;
     my $table = shift;
     
-    my $tableobj = $self->dbschema->table($table);
+    my $tableobj = $self->dbschema->table(lc($table));
     if (!$tableobj) {
         confess("Can't get table $table from db.\n".
                 "Maybe DBIx::DBSchema does not work with your database?");
@@ -297,7 +305,7 @@ sub get_all_cols {
     my $self = shift;
     my $table = shift;
     
-    my $tableobj = $self->dbschema->table($table);
+    my $tableobj = $self->dbschema->table(lc($table));
     if (!$tableobj) {
         confess("Can't get table $table from db.\n".
                 "Maybe DBIx::DBSchema does not work with your database?");
@@ -309,7 +317,7 @@ sub get_unique_sets {
     my $self = shift;
     my $table = shift;
 
-    my $tableobj = $self->dbschema->table($table);
+    my $tableobj = $self->dbschema->table(lc($table));
     if (!$tableobj) {
         confess("Can't get table $table from db.\n".
                 "Maybe DBIx::DBSchema does not work with your database?");
@@ -608,6 +616,28 @@ sub get_mapping_for_col {
     return $self->{_colvalmap}->{$col};
 }
 
+sub make_stag_node_dbsafe {
+    my $self = shift;
+    my $node = shift;
+    my $name = $node->name;
+    my $safename = $self->dbsafe($name);
+    if ($name ne $safename) {
+	$node->name($safename);
+    }
+    my @kids = $node->kids;
+    foreach (@kids) {
+	$self->make_stag_node_dbsafe($_) if ref $_;
+    }
+    return;
+}
+sub dbsafe {
+    my $self = shift;
+    my $name = shift;
+    $name = lc($name);
+    $name =~ tr/a-z0-9_//cd;
+    return $name;
+}
+
 #'(t1
 #  (foo x)
 #  (t2
@@ -655,6 +685,7 @@ sub storenode {
     my $node = shift;
     my @args = @_;
     my $dupnode = $node->duplicate;
+    $self->make_stag_node_dbsafe($dupnode);
     $self->add_linking_tables($dupnode);
     $self->_storenode($dupnode,@args);
 }
@@ -781,7 +812,8 @@ sub _storenode {
                 $tnode->data($nv);
             }
             else {
-                if ($tnode->name eq $pkcol && $v =~ /^\*/) {
+#                if ($tnode->name eq $pkcol && $v =~ /^\*/) {
+                if ($tnode->name eq $pkcol) {
                     trace(0, "will remap $pkcol: $v");
                     $remap{$tnode->name} = $v;
                     $node->unset($tnode->name);
@@ -1405,7 +1437,7 @@ sub selectall_stag {
               if ($alias_h->{$tn}) {
                   $tn = $alias_h->{$tn}->[0];
               }
-              my $tbl = $dbschema->table($tn);
+              my $tbl = $dbschema->table(lc($tn));
               if (!$tbl) {
                   confess("No such table as $tn");
               }
@@ -1432,7 +1464,7 @@ sub selectall_stag {
                     my $baserelname = 
                       $alias_h->{$tn} ? 
                         $alias_h->{$tn}->[0] : $tn;
-                    my $tbl = $dbschema->table($baserelname);
+                    my $tbl = $dbschema->table(lc($baserelname));
                     if (!$tbl) {
                         confess("Don't know anything about table:$tn\n".
                                 "Maybe DBIx::DBSchema does not work for your DBMS?");
@@ -2127,7 +2159,18 @@ sub insertrow {
     }
 
     trace(0, "SQL:$sql");
-    my $rval = $self->dbh->do($sql);
+    eval {
+	my $rval = $self->dbh->do($sql);
+    };
+    if ($@) {
+	if ($self->force) {
+	    # what about transactions??
+	    $self->warn("WARNING: $@");
+	}
+	else {
+	    confess $@;
+	}
+    }
     my $pkval;
     if ($pkcol) {
         $pkval = $colvalh->{$pkcol};
@@ -2954,6 +2997,28 @@ L<DBIx::DBStag::SQLTemplate> for documentation on templates
 
 =cut
 
+=head1 RESOURCES
+
+=head2 resources_list
+
+  Usage   - $rlist = $dbh->resources_list
+  Returns - arrayref to a hashref
+  Args    - none
+
+Returns a list of resources; each resource is a hash
+  
+  {name=>"mydbname",
+   type=>"rdb",
+   schema=>"myschema",
+  }
+
+This relies on you having a file describing all the relational dbs
+available to you, and setting the env var DBSTAG_DBIMAP_FILE set.
+
+B<This is alpha code - not fully documented, API may change>
+
+=cut
+
 
 
 =head1 COMMAND LINE SCRIPTS
@@ -2968,6 +3033,10 @@ scripts and files that utilise tree structures (XML, S-Expressions)
  selectall_xml.pl -d <DSN> [-n <nestexpr>] <SQL>
 
 Queries database and writes decomposed relation as XML
+
+Can also be used with templates:
+
+ selectall_xml.pl -d <DSN> /<templatename> <var1> <var2> ... <varN>
 
 =item selectall_html.pl
 

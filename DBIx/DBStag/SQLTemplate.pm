@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.5 2003/05/29 02:20:15 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.6 2003/07/16 21:35:12 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -124,37 +124,6 @@ sub stag_props {
 }
 
 
-# given a template and a binding, this will
-# create an SQL statement and a list of exec args
-# - the exec args correspond to ?s in the SQL
-#
-# for example WHERE foo = &foo&
-# called with binding foo=bar
-#
-# will become WHERE foo = ?
-# and the exec args will be ('bar')
-#
-# if the template contains option blocks eg
-#
-# WHERE [foo = &foo&]
-#
-# then the part in square brackets will only be included if
-# there is a binding for variable foo
-#
-# if multiple option blocks are included, they will be ANDed
-#
-#
-# if this idiom appears
-#
-# WHERE foo => &foo&
-#
-# then the operator used will either be =, LIKE or IN
-# depending on the value of the foo variable
-#
-# if the foo variable contains % it will be LIKE
-# if the foo variable contains an ARRAY it will be IN
-#
-# (See DBI manpage for discussion of placeholders)
 ##
 #sub zget_sql_and_args {
 #    my $self = shift;
@@ -270,6 +239,43 @@ sub stag_props {
 #    return ($sql, @args);
 #}
 
+
+
+# ---------------------------------
+
+
+
+# given a template and a binding, this will
+# create an SQL statement and a list of exec args
+# - the exec args correspond to ?s in the SQL
+#
+# for example WHERE foo = &foo&
+# called with binding foo=bar
+#
+# will become WHERE foo = ?
+# and the exec args will be ('bar')
+#
+# if the template contains option blocks eg
+#
+# WHERE [foo = &foo&]
+#
+# then the part in square brackets will only be included if
+# there is a binding for variable foo
+#
+# if multiple option blocks are included, they will be ANDed
+#
+#
+# if this idiom appears
+#
+# WHERE foo => &foo&
+#
+# then the operator used will either be =, LIKE or IN
+# depending on the value of the foo variable
+#
+# if the foo variable contains % it will be LIKE
+# if the foo variable contains an ARRAY it will be IN
+#
+# (See DBI manpage for discussion of placeholders)
 sub get_sql_and_args {
     my $self = shift;
     my $bind = shift || {};
@@ -288,15 +294,25 @@ sub get_sql_and_args {
         # assume that the order of arguments specified is
         # the same order that appears in the query
         for (my $i=0; $i<@$bind; $i++) {
+	    if (!$varnames->[$i]) {
+		my $n=$i+1;
+		my $c = @$varnames;
+		$self->throw("Argument number $n ($bind->[$i]) has no place ".
+			     "to bind; there are only $c variables in the ".
+			     "template");
+	    }
+	    # relate ordering of exec args via ordering of variables in
+	    # template; store in a hash
             $argh{$varnames->[$i]} = $bind->[$i];
         }
     }
     if ($bind &&
 	ref($bind) eq 'HASH') {
+	# binding is already specified as a hash - no need to convert
 	%argh = %$bind;
     }
     if ($bind && ref($bind) eq "DBIx::DBStag::Constraint") {
-        # COMPLEX BOOLEAN CONSTRAINTS
+        # COMPLEX BOOLEAN CONSTRAINTS - TODO
         my $constr;
         $constr = $bind;
         ($where, @args) = $self->_get_sql_where_and_args_from_constraints($constr);
@@ -310,7 +326,12 @@ sub get_sql_and_args {
     $sql = join("\n",
                 map {
                     if (lc($_->{name}) eq 'where') {
-                        "WHERE $where";
+			if ($where) {
+			    "WHERE $where";
+			}
+			else {
+			    '';           # no WHERE clause
+			}
                     }
                     else {
                         "$_->{name} $_->{value}";
@@ -343,14 +364,19 @@ sub _get_sql_where_and_args_from_hashmap {
     foreach my $wb (@$where_blocks) {
         my $where = $wb->{text};
         my $varnames = $wb->{varnames};
-        
+
+#        trace(0, "WHEREBLOCK: $where;; VARNAMES=@$varnames;;\n");
+
         my $str = $where;
-        while ($str =~ /(=>)?\s*\&(\w+)\&/) {
+        while ($str =~ /(=>)?\s*\&(\S+)\&/) {
             my $op = $1 || '';
             my $varname = $2;
 
             my $argval = $argh{$varname};
             if (!exists $argh{$varname}) {
+		# if a variable is not set in a particular block,
+		# that block is ignored, and does not form
+		# part of the final query
                 next NEXT_BLOCK;
             }
                 
@@ -422,6 +448,11 @@ sub split_where_clause {
 
     my $vari = 0;
     my %vari_by_name = ();
+
+    # this subroutine take a where block, checks if it contains
+    # one or more patterns
+    #                foo.bar => &baz&
+    # and adds 'baz' to the list of variable names 
     my $sub =
       sub {
           my $textin = shift;
@@ -429,7 +460,7 @@ sub split_where_clause {
           my $str = $textin;
 
           my @varnames = ();
-          while ($str =~ /(=>)?\s*\&(\w+)\&/) {
+          while ($str =~ /(=>)?\s*\&(\S+)\&/) {
               my $op = $1 || '';
               my $varname = $2;
               push(@varnames, $varname);
@@ -445,7 +476,7 @@ sub split_where_clause {
           extract_bracketed($where, '[]');
         $extracted ||= '';
         $remainder ||= '';
-        trace(0, "($extracted, $remainder, $skip)\n");
+        trace(0, "extraction:( E='$extracted', R='$remainder', SKIP='$skip' )\n");
         $remainder =~ s/^\s+//;
         $remainder =~ s/\s+$//;
         $skip =~ s/^\s+//;
@@ -469,6 +500,7 @@ sub split_where_clause {
     @constrs = grep {$_} @constrs;
     return \@constrs;
 }
+
 
 sub get_varnames {
     my $self = shift;
@@ -701,6 +733,16 @@ or
 
 Depending on whether foo contains the % character, or if foo is bound
 to an ARRAY
+
+=head1 METHODS
+
+=head2 get_varnames
+
+  Usage   -
+  Returns -
+  Args    -
+
+=cut
 
 =head1 WEBSITE
 

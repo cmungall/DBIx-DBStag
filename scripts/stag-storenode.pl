@@ -102,10 +102,12 @@ uniqueness constraints)
 
 =head2 Step 3: Store the data in the db
 
-  stag-storenode.pl -d 'dbi:Pg:mydb' data.mog.xml
+  stag-storenode.pl -u movie -d 'dbi:Pg:mydb' data.mog.xml
 
 You generally dont need extra metadata here; everything can be
 infered by introspecting the database.
+
+The -u|unit switch controls when transactions are committed
 
 If this works, you should now be able to retreive XML from the database, eg
 
@@ -136,8 +138,10 @@ if ($help) {
     exit 0;
 }
 
-print STDERR "Connecting to $db\n";
+#print STDERR "Connecting to $db\n";
 my $dbh = DBIx::DBStag->connect($db);
+$dbh->dbh->{AutoCommit} = 0;
+
 foreach my $fn (@ARGV) {
     if ($unit) {
 	my $H = Data::Stag->makehandler($unit=>sub {
@@ -152,6 +156,7 @@ foreach my $fn (@ARGV) {
     else {
 	my $stag = Data::Stag->parse($fn);
 	$dbh->storenode($stag);
+	$dbh->commit;
     }
 #    my @kids = $stag->kids;
 #    foreach (@kids) {

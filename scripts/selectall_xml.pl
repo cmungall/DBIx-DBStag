@@ -97,7 +97,7 @@ should be nested. See L<DBIx::DBStag> for details.
 
 the name of a template; see above
 
-=item -w|where WHERE-CLAUSE
+=item -wh|where WHERE-CLAUSE
 
 used to override the WHERE clause of the query; useful for combining
 with templates
@@ -143,6 +143,7 @@ my $template;
 my $where;
 my $select;
 my $rows;
+my $writer;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
@@ -153,7 +154,8 @@ GetOptions(
 	   "user|u=s"=>\$user,
 	   "pass|p=s"=>\$pass,
 	   "template|t=s"=>\$template,
-	   "where|w=s"=>\$where,
+	   "where|wh=s"=>\$where,
+	   "writer|w=s"=>\$writer,
 	   "select|s=s"=>\$select,
           );
 if ($help) {
@@ -223,7 +225,13 @@ eval {
 	$dbh->disconnect;	
 	exit 0;
     }
-    $xml = $dbh->selectall_xml(@sel_args);
+    if ($writer) {
+	my $stag = $dbh->selectall_stag(@sel_args);
+	$xml = $stag->$writer();
+    }
+    else {
+	$xml = $dbh->selectall_xml(@sel_args);
+    }
 };
 if ($@) {
     print "FAILED\n$@";
