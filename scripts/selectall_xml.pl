@@ -27,6 +27,8 @@ my @order;
 my $color;
 my $out;
 my $sgml;
+my @matrixcols;
+my @matrixcells;
 
 # cmd line interpreter gets rid of quotes; need to use backspace
 my @ARGV2 = ();
@@ -50,6 +52,8 @@ GetOptions(
 	   "pass|p=s"=>\$pass,
 	   "template|t=s"=>\$template_name,
 	   "where|wh=s"=>\$where,
+	   "matrixcol|mcol=s@"=>\@matrixcols,
+	   "matrixcell|mcell=s@"=>\@matrixcells,
 	   "writer|w=s"=>\$writer,
 	   "select|s=s"=>\$select,
 	   "order=s@"=>\@order,
@@ -64,6 +68,15 @@ GetOptions(
 if ($help && !$template_name && !$db) {
     system("perldoc $0");
     exit 0;
+}
+
+if ((@matrixcols && !@matrixcells) ||
+    (!@matrixcols && @matrixcells)) {
+    print STDERR "-matrixcol and -matrixcell must be set together!\n";
+    exit 1;
+}
+if (@matrixcols) {
+    $rows = 1;
 }
 
 my $H = Data::Stag->getformathandler($writer || $ENV{STAG_WRITER} || 'xml');
@@ -202,35 +215,66 @@ if ($template) {
 eval {
     if ($rows) {
         
-	my $count = 0;
+        my $count = 0;
         my $prep_h = $dbh->prepare_stag(@sel_args);
         my $cols = $prep_h->{cols};
         my $sth = $prep_h->{sth};
         my $exec_args = $prep_h->{exec_args};
         my $rv = $sth->execute(@$exec_args);
+        if (@matrixcols) {
+            my @COL = ();
+            my @CELL = ();
+            for (my $i=0;$i<@$cols;$i++) {
+                my $col = $cols->[$i];
+                foreach (@matrixcols) {
+                    if ($_ eq $col) {
+                        $COL[$i]=1;
+                    }
+                }
+                foreach (@matrixcells) {
+                    if ($_ eq $col) {
+                        $CELL[$i]=1;
+                    }
+                }
+            }
+            while (my $r = $sth->fetchrow_arrayref) {
+                my @row = ();
+                for (my $i=0;$i<@$cols;$i++) {
+                    if ($COL[$i]) {
+                    }
+                    elsif ($COL[$i]) {
+                    }
+                    else {
+                    }
+                }                
+            }
+        }
         while (my $r = $sth->fetchrow_arrayref) {
-	    if ($sgml) {
-		if (!$count) {
-		    $H->start_event('table');
-		    $H->event(title=>"Query Results");
-		    $H->start_event('tgroup');
-		    $H->event('@'=>[
-				    [cols=>scalar(@$r)]]);
-		    $H->event(thead=>[
-				      [row=>[
-					     map {[entry=>$_]} @$cols]]]);
-		    $H->start_event('tbody');
-		}
-		$H->event(row=>[map {[entry=>$_]} @$r]);
-	    }
-	    else {
-		printf "%s\n", 
-		  join("\t", map {defined $_ ? $_ : '\\NULL'} @$r);
-	    }
-	    $count++;
-	}
-    }
+            # TODO: html
+            if ($sgml) {
+                if (!$count) {
+                    $H->start_event('table');
+                    $H->event(title=>"Query Results");
+                    $H->start_event('tgroup');
+                    $H->event('@'=>[
+                                    [cols=>scalar(@$r)]]);
+                    $H->event(thead=>[
+                                      [row=>[
+                                             map {[entry=>$_]} @$cols]]]);
+                    $H->start_event('tbody');
+                }
+                $H->event(row=>[map {[entry=>$_]} @$r]);
+            } 
+            else {
+                # ASCII
+                printf "%s\n", 
+                  join("\t", map {defined $_ ? $_ : '\\NULL'} @$r);
+            }
+            $count++;
+        }
+    }                            # end of ROWS mode
     else {
+        # HIERARCHICAL
         my $fh;
         if ($out) {
             my $fh = FileHandle->new(">$out") || die "cannot write to $out";
@@ -385,6 +429,7 @@ with templates
 sometimes it is preferable to return the results as a table rather
 than xml or a similar nested structure. specifying -rows will fetch a
 table, one line per row, and columns seperated by tabs
+
 
 =item -o|out FILE
 

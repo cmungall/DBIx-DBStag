@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.22 2004/09/22 16:42:25 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.23 2004/09/30 01:08:25 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -320,7 +320,7 @@ sub get_sql_and_args {
 	my %varnameh = map {$_=>1} @$varnames;
 	my @bad =  grep {!$varnameh{$_}} keys %argh;
 	if (@bad) {
-	    $self->throw("argument(s) not recognised: @bad");
+	    $self->throw("param(s) not recognised: @bad\nValid params:\n".join("\n",map {"  $_"}@$varnames));
 	}
     }
     if ($bind && ref($bind) eq "DBIx::DBStag::Constraint") {

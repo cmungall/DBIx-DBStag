@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.34 2004/09/22 16:42:23 cmungall Exp $
+# $Id: DBStag.pm,v 1.35 2004/09/30 01:08:09 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -813,7 +813,11 @@ sub query_cache {
     my $valstr = join("\t", map {$constr->{$_}} @keycols);
 #    use Data::Dumper;
 #    print Dumper $cache;
-    $cache->{$valstr} = $update_h if $update_h;
+    if ($update_h) {
+        my $current_h = $cache->{$valstr} || {};
+        $current_h->{$_} = $update_h->{$_} foreach keys %$update_h;
+        $cache->{$valstr} = $current_h;
+    }
     return $cache->{$valstr};
 }
 
@@ -864,6 +868,8 @@ sub get_tuple_idx {
         $cache->{$element} = {};
     }
     my $eltcache = $cache->{$element};
+    # we just use a flat perl hash - flatten the list of unique cols
+    # to a string with spaces between
     my $k = "@keycols";
     if (!$eltcache->{$k}) {
         $eltcache->{$k} = {};
@@ -1053,7 +1059,7 @@ sub _storenode {
     my $dbh = $self->dbh;
     my $dbschema = $self->dbschema;
 
-    my $is_caching_on = $self->is_caching_on($element);
+    my $is_caching_on = $self->is_caching_on($element) || 0;
 
     my $mapping = $self->mapping || [];
 
@@ -1344,7 +1350,7 @@ sub _storenode {
 #            $uset->[0] eq $pkcol) {
 #            next;
 #        }
-        trace(0, "TRYING USET: @$uset;; [pk=$pkcol]");
+        trace(0, "TRYING USET: ;@$uset; [pk=$pkcol]");
 
         # get the values of the unique key columns;
         # %constr is a candidate unique key=>val mapping
@@ -1362,6 +1368,7 @@ sub _storenode {
         if (!$select_col && @$uset == 1) {
             $select_col = $uset->[0];
         }
+        trace(0, "GOT unique_constr, select_col=$select_col");
         last;
     }
     # -- END OF @usets --
@@ -1375,15 +1382,9 @@ sub _storenode {
         # check if we have already updated/inserted
         # this tuple this session; and if so, what
         # the update constraint used was
-        if ($is_caching_on) {
-            # --
-            # EXPERIMENTAL
-            #
-            # caching off for now
-            #
-            # --
+        if ($is_caching_on == 1 || $is_caching_on == 3) {
 
-            $self->throw("no select col for $element") unless $select_col;
+            #$self->throw("no select col for $element") unless $select_col;
             # fetch values of unique_constr from cache
             my %cached_colvals =
               %{$self->query_cache($element,
@@ -1394,10 +1395,13 @@ sub _storenode {
                 if ($pkcol) {
                     $id = $cached_colvals{$pkcol};
                     if ($id) {
+                        # use the cached pk id for efficiency
+                        #%unique_constr = {$pkcol => $id};
                         trace(0, "CACHED $pkcol  = $id");
                     }
                     else {
-                        trace(0, "NO CACHED COLVAL FOR $pkcol");
+                        trace(0, "NO CACHED COLVAL FOR $pkcol :: ".
+                             join("; ",map {"$_ = $cached_colvals{$_}"} keys %cached_colvals));
                     }
                 }
 
@@ -1417,6 +1421,8 @@ sub _storenode {
                     trace(0, "UNCHANGED - WILL NOT STORE; store_hash empty");
                 }
             }
+            else {
+            }
         }
         # -- END OF CACHING CHECK --
 
@@ -1427,14 +1433,20 @@ sub _storenode {
             # the input node contains all the keys in %update_constr
             # - check to see if this relation exists in the DB
 
-            my $sql =
-              $self->makesql($element,
-                             \%unique_constr,
-                             $select_col);
-            trace(0, "SQL: $sql");
-            my $vals =
-              $dbh->selectcol_arrayref($sql);
-            
+            my $vals;
+            if ($is_caching_on >= 2) {
+                $vals = [];
+            }
+            else {
+                my $sql =
+                  $self->makesql($element,
+                                 \%unique_constr,
+                                 $select_col);
+                trace(0, "SQL: $sql");
+                $vals =
+                  $dbh->selectcol_arrayref($sql);
+            }
+
             if (@$vals) {
                 # yes it does exist in DB; check if there is a
                 # pkcol - if there is, it means we can do an
@@ -1500,7 +1512,7 @@ sub _storenode {
                                  \%store_hash,
                                  \%unique_constr);
                 # -- CACHE RESULTS --
-                if ($is_caching_on) {
+                if ($is_caching_on == 1 || $is_caching_on == 3) {
                     $self->update_cache($element,
                                         \%store_hash,
                                         \%unique_constr);
@@ -2678,8 +2690,9 @@ sub insertrow {
     }
 
     trace(0, "SQL:$sql");
+    my $rval;
     eval {
-	my $rval = $self->dbh->do($sql);
+        $rval = $self->dbh->do($sql);
     };
     if ($@) {
 	if ($self->force) {
@@ -2708,6 +2721,7 @@ sub insertrow {
                 $pkval  = $self->selectval("select max($pkcol) from $table");        
             }
         }
+        trace(0, "PKVAL = $pkval");
     }
     return $pkval;
 }
@@ -3721,22 +3735,41 @@ If we were to first call $sdbh->trust_primary_key_values(1), then
 person.id would remain to be 23. This would only be appropriate
 behaviour if we were storing back into the same db we retrieved from.
 
-=head2 is_caching_on
+=head2 is_caching_on B<ADVANCED OPTION>
 
   Usage   - $dbh->is_caching_on('person', 1)
   Returns - bool
-  Args    - string, bool
+  Args    - number
+                   0: off (default)
+                   1: memory-caching ON
+                   2: memory-cahing  OFF, bulkload ON
+                   3: memory-caching ON, bulkload ON
 
-By default no in-memory caching is used. If this is set, then an
-in-memory cache is used for any particular element. No cache
+IN-MEMORY CACHING
+
+By default no in-memory caching is used. If this is set to 1,
+then an in-memory cache is used for any particular element. No cache
 management is used, so you should be sure not to cache elements that
 will cause memory overloads.
 
 Setting this will not affect the final result, it is purely an
 efficiency measure for use with storenode().
 
-The cache is indexed by ALL unique keys for that particular
-element/table.
+The cache is indexed by all unique keys for that particular
+element/table, wherever those unique keys are set
+
+BULKLOAD
+
+If bulkload is used without memory-caching (set to 2), then only
+INSERTs will be performed for this element. Note that this could
+potentially cause a unique key violation, if the same element is
+present twice
+
+If bulkload is used with memory-caching (set to 3) then only INSERTs
+will be performed; the unique serial/autoincrement identifiers for
+those inserts will be cached and used. This means you can have the
+same element twice. However, the load must take place in one session,
+otherwise the contents of memory will be lost
 
 =cut
 
