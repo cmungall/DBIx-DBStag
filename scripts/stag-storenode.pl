@@ -163,3 +163,4 @@ foreach my $fn (@ARGV) {
 #        $dbh->storenode($_);
 #    }
 }
+$dbh->disconnect;

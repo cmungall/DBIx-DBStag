@@ -4,6 +4,7 @@
 # cjm@fruitfly.org
 
 use strict;
+no strict qw(vars);
 use Carp;
 use DBIx::DBStag;
 use Data::Stag qw(:all);
@@ -20,6 +21,7 @@ my $connect;
 my $term;
 my @hist = ();
 my $XTERMMODE = 0;
+my $MLINEMODE = 0;
 my $TBLMODE = 0;
 
 my $cscheme =
@@ -33,10 +35,12 @@ my $cscheme =
   };
 
 my $dbimap;
+my $schema;
 GetOptions(
            "dbname|d=s"=>\$dbname,
            "connect|c"=>\$connect,
 	   "dbimap=s"=>\$dbimap,
+	   "schema|s=s"=>\$schema,
           );
 if ($dbimap) {
     $ENV{DBSTAG_DBIMAP_FILE} = $dbimap;
@@ -51,7 +55,6 @@ my $dbh;
 
 my $stag;
 my $res;
-my $schema;
 my $loc;
 my $templates = [];
 my $varnames = [];
@@ -108,22 +111,34 @@ sub shell {
         close(F);
     }
 
-    my $end_signal = "";
+    my $end_signal = ";";
     while (!$quit) {
-        if ($end_signal) {
-            @lines = ($line);
-            while ($end_signal && ($line = $term->readline("? "))) {
-                if($line !~ /$end_signal/) {
-                    $lines[0].= "\n$line";
-                }
-                else {
-                    $end_signal = "";
-                }
+	my $line;
+        if ($MLINEMODE) {
+	    $line = '';
+	    my $thisline =
+	      $term->readline(prompt($prompt));
+	    if ($thisline =~ /^\\/ || $thisline =~ /^\w$/ ||
+		$thisline =~ /^\w\s+/ || $thisline =~ /^\//) {
+		$line = $thisline;
+	    }
+	    else {
+		while (1) {
+		    if($thisline !~ /(.*)$end_signal/) {
+			$line.= "$thisline\n";
+		    }
+		    else {
+			$line.= "$1\n";
+			last;
+		    }
+		    $thisline = $term->readline('- ');
+		}
             }
-            next;
         }
-        my $line =
-          @lines ? shift @lines : $term->readline(prompt($prompt));
+	else {
+	    $line =
+	      @lines ? shift @lines : $term->readline(prompt($prompt));
+	}
         if ($line =~ /^\^/) {
             $line =~ s/^\^//;
             print "$prompt$line";
@@ -153,7 +168,8 @@ sub shell {
 
 	addhist($line);
 
-        $line =~ s/^select/:SELECT/i;
+	$line =~ s/\#[^\n]*\n*/\n/gs;
+        $line =~ s/^\s*select/:SELECT/i;
 
         # : - sql tunnel and escape everything after in quotes
         if ($line =~ /^:/) {
@@ -172,36 +188,41 @@ sub shell {
         }
         if ($line =~ /^\\d\s*(.*)/) {
 	    my $arg = $1 ? "('$1')" : '';
-	    $line = "showdbs $arg";
+	    $line = "showdbs $arg;";
         }
         if ($line =~ /^\\tt\s*(.*)/) {
 	    my $arg = $1 ? "('$1')" : '';
-	    $line = "dshowtemplates $arg";
+	    $line = "dshowtemplates $arg;";
         }
         if ($line =~ /^\\t\s*(.*)/) {
 	    my $arg = $1 ? "('$1')" : '';
-	    $line = "showtemplates $arg";
+	    $line = "showtemplates $arg;";
         }
         if ($line =~ /^\\v\s*(.*)/) {
 	    my $arg = $1 ? "('$1')" : '';
-	    $line = "showvars $arg";
+	    $line = "showvars $arg;";
         }
         if ($line =~ /^d\s+(.*)/) {
-	    $line = "db '$1'";
+	    $line = "db '$1';";
         }
         if ($line =~ /^w\s+(.*)/) {
-	    $line = "writer '$1'";
+	    $line = "writer '$1';";
         }
         if ($line =~ /^t\s+(.*)/) {
-	    $line = "template '$1'";
+	    $line = "template '$1';";
         }
-        if ($line =~ /^q$/) {
+        if ($line =~ /^\/$/) {
 	    ex();
 	    next;
         }
-        if ($line =~ /^q\s+(.*)$/) {
+        if ($line =~ /^\/\s*(.*)$/) {
 	    ex(split(' ', $1));
 	    next;
+        }
+        if ($line =~ /^\\l/) {
+	    $MLINEMODE = !$MLINEMODE;
+	    printf "MLINEMODE = %s\n", $MLINEMODE ? 'MULTI' : 'SINGLE';
+	    $line = '';
         }
         if ($line =~ /^\\x/) {
 	    $XTERMMODE = !$XTERMMODE;
@@ -216,6 +237,10 @@ sub shell {
         if ($line =~ /^\\c/) {
 	    showresourcesfile();
 	    next;
+        }
+        if ($line =~ /^\\q/) {
+	    $quit = 1;
+	    last;
         }
 	if ($line =~ /^(\w+)\s*=\s*(.*)/) {
 	    $exec_argh{"$1"} = $2;
@@ -270,22 +295,22 @@ sub setdb {
     msg("Set dbname to $dbname");
     $res = $resources_hash->{$dbname};
     if ($res) {
-	$schema = $res->{schema} || '';
+	$schema = $res->{schema};
 	$loc = $res->{loc} || '';
 	msg("loc: $loc") if $loc;
-	if ($schema) {
-	    $templates = $sdbh->find_templates_by_schema($schema);
-	    msg("schema: $schema");
-	}
-	else {
-	    msg("schema not known; templates unrestricted");
-	    $templates = $sdbh->template_list;
-	}
-	msg("Templates available: " . scalar(@$templates));
     }
     else {
 	warnmsg("Unknown $dbname");
     }
+    if ($schema) {
+	$templates = $sdbh->find_templates_by_schema($schema);
+	msg("schema: $schema");
+    }
+    else {
+	msg("schema not known; templates unrestricted");
+	$templates = $sdbh->template_list;
+    }
+    msg("Templates available: " . scalar(@$templates));
     $res;
 }
 sub db {
@@ -541,7 +566,7 @@ sub msg {
     print "@_\n";
 }
 sub warnmsg {
-    print STDERR "@_\n";
+    print "WARNING:@_\n";
 }
 sub welcome {
     msg("Hullo. I am the Stag God. I am also a command line interface to DBStag.");
@@ -571,7 +596,10 @@ sub help {
 	   ' w WRITER       set the tree writer (xml, sxpr or itext)',
 	   ' t TEMPLATE     set the template',
 	   ' \v             show template variable bindings',
-	   ' q [ARGS]       execute the template; bind using ARGS',
+	   ' \l             toggle multi/single line mode',
+	   ' \q             QUIT',
+	   '',
+	   ' / [ARGS]       execute the template; bind using ARGS',
 	   '',
 	   'Binding to template variables',
 	   '',
@@ -583,10 +611,14 @@ sub help {
 	   '',
 	   'you can also bind variables when you execute the query, like this',
 	   '',
-	   ' q VAR1=VAL1 VAR2=VAL2',
+	   ' /VAR1=VAL1 VAR2=VAL2',
 	   '',
 	   'or sequentially:',
-	   ' q VAL1 VAL2',
+	   ' / VAL1 VAL2',
+	   'single value:',
+	   ' /VAL1',
+	   'example with wildcard:',
+	   ' /*foo*',
 	   '',
 	   'if you have already bound the variables using =, then just type "q"',
 	   '',
