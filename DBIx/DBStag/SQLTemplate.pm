@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.11 2003/08/04 02:22:24 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.12 2003/08/07 06:00:45 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -33,7 +33,7 @@ sub DEBUG {
 sub trace {
     my ($priority, @msg) = @_;
     return unless $ENV{DBSTAG_TRACE};
-    print "@msg\n";
+    print STDERR "@msg\n";
 }
 
 sub dmp {

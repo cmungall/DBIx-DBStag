@@ -163,6 +163,10 @@ if ($help) {
     exit 0;
 }
 
+if (!$db) {
+    die "you must specify a database name (logical name or dbi path) with -d";
+}
+
 my $dbh = 
   DBIx::DBStag->connect($db, $user, $pass);
 my $sql;
@@ -171,18 +175,23 @@ if ($file) {
     $sql = join('', <F>);
     close(F);
 }
+elsif ($template) {
+    # No SQL required if template provided
+}
 else {
     $sql = shift @ARGV;
+
+    if ($sql eq '-') {
+	print STDERR "Reading SQL from STDIN...\n";
+	$sql = <STDIN>;
+    }
+    if ($sql =~ /^\/(.*)/) {
+	# shorthand for a template
+	$template = $1;
+	$sql = '';
+    }
 }
-if (!$sql) {
-    print STDERR "Reading SQL from STDIN...\n";
-    $sql = <STDIN>;
-}
-if ($sql =~ /^\/(.*)/) {
-    # shorthand for a template
-    $template = $1;
-    $sql = '';
-}
+
 my $xml;
 my @sel_args = ($sql, $nesting);
 if ($template) {
@@ -220,7 +229,7 @@ eval {
 	my $ar =
 	  $dbh->selectall_rows(@sel_args);
 	foreach my $r (@$ar) {
-	    printf "%s\n", join("\t", @$r);
+	    printf "%s\n", join("\t", map {defined $_ ? $_ : '\\NULL'} @$r);
 	}
 	$dbh->disconnect;	
 	exit 0;

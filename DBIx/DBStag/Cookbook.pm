@@ -163,6 +163,8 @@ We want to create the CGI, and give it access to our templates:
   cp templates/*.stg /usr/local/httpd/cgi-bin/cia
   cp $HOME/DBIx-DBStag/cgi-bin/ubiq.cgi /usr/local/httpd/cgi-bin/cia
   chmod +x /usr/local/httpd/cgi-bin/cia/ubiq.cgi
+  mkdir /usr/local/httpd/cgi-bin/cia/cache
+  chmod 777 /usr/local/httpd/cgi-bin/cia/cache
 
 Set up the environment for the CGI script. It must be able to see the
 templates and the necessary perl libraries (if not installed

@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.14 2003/08/04 00:28:23 cmungall Exp $
+# $Id: DBStag.pm,v 1.15 2003/08/07 06:00:45 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -35,7 +35,7 @@ sub DEBUG {
 sub trace {
     my ($priority, @msg) = @_;
     return unless $ENV{DBSTAG_TRACE};
-    print "@msg\n";
+    print STDERR "@msg\n";
 }
 
 sub dmp {
@@ -88,6 +88,9 @@ sub connect {
 sub resolve_dbi {
     my $self = shift;
     my $dbi = shift;
+    if (!$dbi) {
+	$self->throw("database name not provided!");
+    }
     if ($dbi !~ /[;:]/) {
 	my $rh = $self->resources_hash;
 	my $res = 
@@ -1410,6 +1413,27 @@ sub selectall_stag {
 
     # get the parsed SQL SELECT statement as a stag node
     my $stmt = $parser->selectstmt($sql);
+    if (!$stmt) {
+	# there was some error parsing the SQL;
+	# DBI can probably give a better explanation.
+	eval {
+	    my $sth = $self->dbh->prepare($sql);
+	    
+	};
+	if ($@) {
+	    $self->throw("SQL ERROR:\n$@");
+	}
+	# DBI accepted it - must be a bug in the DBStag grammar
+	$self->throw("I'm sorry but the SQL statement you gave does\n".
+		     "not conform to the more limited subset of SQL\n".
+		     "that DBStag supports. Please see the DBStag docs\n".
+		     "for details.\n".
+		     "\n".
+		     "Remember to check you explicitly declare all aliases\n".
+		     "using AS\n\n\nSQL:$sql");
+    }
+
+
     trace 0, "parsed: $sql\n";
 #    trace 0, $stmt->xml;
     my $dbschema = $self->dbschema;
@@ -1645,6 +1669,8 @@ sub selectall_stag {
     # ---- end of column fetching ---
 
     trace(0, "COLS:@cols");
+
+
 
     # --- execute SQL SELECT statement ---
     if ($template) {
