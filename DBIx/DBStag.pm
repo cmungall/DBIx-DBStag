@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.38 2004/10/29 23:43:55 cmungall Exp $
+# $Id: DBStag.pm,v 1.39 2005/02/09 19:48:53 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -22,7 +22,7 @@ use DBIx::DBSchema;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
-$VERSION="0.06";
+$VERSION="0.07";
 
 
 our $DEBUG;
@@ -1587,6 +1587,13 @@ sub _storenode {
               $self->insertrow($element,
                                \%store_hash,
                                $pkcol);
+            if (!$id) {
+                # this only happens if $self->force(1) is set
+                if (@delayed_store) {
+                    confess("Insert on $element failed, this is required for storing subnodes");
+                }
+                return;
+            }
             if ($tracekeyval) {
                 printf STDERR "INSERT: $tracenode $tracekeyval [val = $id]\n"
             }
@@ -2753,25 +2760,28 @@ sub insertrow {
     }
 
     trace(0, "SQL:$sql") if $TRACE;
-    my $rval;
+    my $succeeded = 0;
     eval {
-        $rval = $self->dbh->do($sql);
+        my $rval = $self->dbh->do($sql);
+        $succeeded = 1 if defined $rval;
     };
     if ($@) {
 	if ($self->force) {
 	    # what about transactions??
 	    $self->warn("IN SQL: $sql\nWARNING: $@");
+            return;
 	}
 	else {
 	    confess $@;
 	}
     }
+    return unless $succeeded;
     my $pkval;
     if ($pkcol) {
         $pkval = $colvalh->{$pkcol};
         if (!$pkval) {
-            # POSTGRES HARDCODE ALERT
             if (0) {
+                # POSTGRES HARDCODE ALERT
                 my $seqn = sprintf("%s_%s_seq",
                                    $table,
                                    $pkcol);
@@ -2780,8 +2790,11 @@ sub insertrow {
             }
             if (1) {
                 # THIS IS NOT TRANSACTION SAFE
-                # ONLY WORKS FOR SERIALS
-                $pkval  = $self->selectval("select max($pkcol) from $table");        
+                # ONLY WORKS FOR SERIALS/AUTO-INCREMENTS
+                $pkval  = $self->selectval("select max($pkcol) from $table");
+
+                # THIS DOESN'T WORK FOR POSTGRESQL:
+                #$pkval = $self->dbh->last_insert_id;
             }
         }
         trace(0, "PKVAL = $pkval") if $TRACE;
