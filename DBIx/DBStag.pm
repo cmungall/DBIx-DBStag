@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.8 2003/05/29 02:20:15 cmungall Exp $
+# $Id: DBStag.pm,v 1.9 2003/05/31 01:14:53 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -435,7 +435,7 @@ sub _autoddl {
     if ($parent) {
         my ($pn) = elt_card($parent->element);
         push(@cols,
-             sprintf("%s_id int", $pn));
+             sprintf("%s_id INT", $pn));
         push(@cols,
              sprintf("FOREIGN KEY (%s_id) REFERENCES $pn(%s_id)$casc", $pn, $pn));
     }
