@@ -1,4 +1,4 @@
-#$Id: Makefile.PL,v 1.1 2003/04/23 00:59:29 cmungall Exp $
+#$Id: Makefile.PL,v 1.2 2003/04/23 04:38:13 cmungall Exp $
 
 # This Makefile.PL was cut-n-pasted from the DBIx::Abstract
 # Nakefile.PL, by Andrew Turner <turnera@cpan.org>
@@ -90,11 +90,11 @@ if (open(FILE, ">$fileName")) {
 
 WriteMakefile(
 	      'NAME'         => "DBIx",
-	      'ABSTRACT'     => 'DBIStag',
+	      'ABSTRACT'     => 'DBStag',
 	      'AUTHOR'       => 'Chris Mungall <cjm@fruitfly.org>',
 	      'dist'  => { COMPRESS    => 'gzip -9f',
 			   SUFFIX      => 'gz'},
-	      'VERSION_FROM' => "DBIx/DBIStag.pm",
+	      'VERSION_FROM' => "DBIx/DBStag.pm",
 	      'PREREQ_PM'    => {
 				 'Data::Stag'         => 0,
 				},
@@ -102,11 +102,11 @@ WriteMakefile(
 				],
 	      
 	      clean => {
-			FILES => 'DBIx-DBIStag-$(VERSION).tar.gz',
+			FILES => 'DBIx-DBStag-$(VERSION).tar.gz',
 		       },
 	     );
 
-use DBIStagTest;
+use DBStagTest;
 eval {
     dbh()->disconnect;
 };
@@ -117,6 +117,7 @@ if ($@) {
 
 Could not connect using these parameters; test suite will probably fail
 
+$@
 EOM
 }
 

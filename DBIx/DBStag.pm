@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.1 2003/04/23 00:59:35 cmungall Exp $
+# $Id: DBStag.pm,v 1.2 2003/04/23 04:38:17 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -2234,7 +2234,7 @@ __END__
 
 =head1 NAME
 
-  DBIx::DBStag - Mapping between databases and Stag tree structures
+  DBIx::DBStag - Automatic database to Stag/XML mapping
 
 =head1 SYNOPSIS
 
@@ -2256,6 +2256,16 @@ __END__
   my $dataset = $dbh->selectall_stag($sql);
   my @studios = $dataset->get_studio;
 
+  # returns nested data that looks like this -
+  #
+  # (studio
+  #  (name "20th C Fox")
+  #  (movie
+  #   (name "star wars") (genre "sci-fi")
+  #   (star
+  #    (firstname "Carrie")(lastname "Fisher")))))
+
+  # iterate through result tree -
   foreach my $studio (@studios) {
 	printf "STUDIO: %s\n", $studio->get_name;
 	my @movies = $studio->get_movie;
@@ -2279,7 +2289,7 @@ __END__
 
   $dbh->storenode($dataset);
 
-From the command line:
+Or from the command line:
 
   unix> selectall_xml -d 'dbi:Pg:dbname=spybase' 'SELECT * FROM studio NATURAL JOIN movie'
 
@@ -2288,7 +2298,8 @@ From the command line:
 =head1 DESCRIPTION
 
 This module is for mapping from databases to Stag objects (Structured
-Tags - see Data::Stag). It has two main uses:
+Tags - see L<Data::Stag>), which can also be represented as XML. It
+has two main uses:
 
 =over
 
@@ -2296,12 +2307,12 @@ Tags - see Data::Stag). It has two main uses:
 
 This module can take the results of any SQL query and decompose the
 flattened results into a tree data structure which reflects the
-underlying relational schema. It does this by looking at the SQL query
-and introspecting the schema, rather than requiring metadata or an
-object model.
+foreign keys in the underlying relational schema. It does this by
+looking at the SQL query and introspecting the database schema, rather
+than requiring metadata or an object model.
 
-In this respect, the module works just like a regular DBI handle, with
-extra methods provided.
+In this respect, the module works just like a regular L<DBI> handle, with
+some extra methods provided.
 
 =item Storing Data
 
@@ -2319,18 +2330,33 @@ XML can also be imported, and a relational schema automatically generated.
 This is a general overview of the rules for turning SQL query results
 into a tree like data structure.
 
-
 =head3 Relations
 
 Relations (i.e. tables and views) are elements (nodes) in the
 tree. The elements have the same name as the relation in the database.
 
-=head3 Attributes
+=head3 Columns
 
-Attributes (i.e. columns) of a relation are nested(sub) elements of
-the relation element. These elements will be data elements (terminal
-nodes). Only the attributes selected for in the SQL query will be
-present.
+Table and view columns of a relation are sub-elements of the table or
+view to which they belong. These elements will be B<data elements>
+(i.e. terminal nodes). Only the columns selected in the SQL query
+will be present.
+
+For example, the following query
+
+  SELECT name, job FROM person;
+
+will return a data structure that looks like this:
+
+  (person
+   (name "fred")
+   (job "forklift driver"))
+  (person
+   (name "joe")
+   (job "steamroller mechanic"))
+
+The data is shown as a lisp-style S-Expression - it can also be
+expressed as XML, or manipulated as an object within perl.
 
 =head3 Table aliases
 
@@ -2338,13 +2364,13 @@ If an ALIAS is used in the FROM part of the SQL query, the relation
 element will be nested inside an element with the same name as the
 alias. For instance, the query
 
-  SELECT name FROM person AS author;
+  SELECT name FROM person AS author WHERE job = 'author';
 
 Will return a data structure like this:
 
   (author
    (person
-    (name "...")))
+    (name "Philip K Dick")))
 
 The underlying assumption is that aliasing is used for a purpose in
 the original query; for instance, to determine the context of the
@@ -2355,7 +2381,7 @@ relation where it may be ambiguous.
            INNER JOIN 
        person AS boss ON (employee.boss_id = boss.person_id)
 
-Will generate the default tree -
+Will generate a nested result structure similar to this -
 
   (employee
    (person
@@ -2371,7 +2397,18 @@ Will generate the default tree -
 If we neglected the alias, we would have 'person' directly nested
 under 'person', and the meaning would not be obvious. Note how the
 contents of the SQL query dynamically modifies the schema/structure of
-the resulting tree.
+the result tree.
+
+NOTE ON SQL SYNTAX
+
+Right now, DBStag is fussy about how you specify aliases; you must use
+B<AS> - you must say
+
+  SELECT name FROM person AS author;
+
+instead of
+
+  SELECT name FROM person author;
 
 =head3 Nesting of relations
 
@@ -2381,13 +2418,13 @@ query over relations A, B, C, D,... there are a number of possible
 tree structures. Not all of the tree structures are meaningful.
 
 Usually it will make no sense to nest A under B if there is no foreign
-key relationship linking either A to B or B to A. This is not always
-the case - it may be desirable to nested A under B if there is an
+key relationship linking either A to B, or B to A. This is not always
+the case - it may be desirable to nest A under B if there is an
 intermediate linking table that is required at the relational level
 but not required in the tree structure.
 
 DBStag will guess a structure/schema based on the ordering of the
-relations in your FROM clause. However, this guess can be overwritten
+relations in your FROM clause. However, this guess can be over-ridden
 at either the SQL level (using DBStag specific SQL extensions) or at
 the API level.
 
@@ -2396,7 +2433,8 @@ relation element preceeding it in the FROM clause; for instance:
 
   SELECT * FROM a NATURAL JOIN b NATURAL JOIN c
 
-will generate the structure
+If there are appropriately named foreign keys, the following data will
+be returned (assuming one row in each of a, b and c)
 
   (set
    (a
@@ -2406,13 +2444,12 @@ will generate the structure
      (c
       (c_foo "...")))))
 
-assuming there is only one row in each.
-
-(where 'n_foo' is a column in relation 'n')
+where 'x_foo' is a column in relation 'x'
 
 This is not always desirable. If both b and c have foreign keys into
-table a, DBStag will not detect this. You have to guide it. You can
-guide by bracketing your FROM clause like this:
+table a, DBStag will not detect this - you have to guide it. There are
+two ways of doing this - you can guide by bracketing your FROM clause
+like this:
 
   !!##
   !!## NOTE - THIS PART IS NOT SET IN STONE - THIS MAY CHANGE
@@ -2435,7 +2472,8 @@ preceeding it; or, if the preceeding item in the FROM clause is a
 bracketed structure, nest it under the first relational element in the
 bracketed structure.
 
-(Note that in MySQL you may not bracket the FROM clause in this way)
+(Note that in MySQL you may not place brackets in the FROM clause in
+this way)
 
 Another way to achieve the same thing is to specify the desired tree
 structure using a DBStag specific SQL extension. The DBStag specific
@@ -2501,7 +2539,7 @@ DBStag returns L<Data::Stag> structures that are equivalent to a
 simplified subset of XML (and also a simplified subset of lisp
 S-Expressions).
 
-These structures are examples of semi-structured data - a good
+These structures are examples of B<semi-structured data> - a good
 reference is this book -
 
   Data on the Web: From Relations to Semistructured Data and XML
@@ -2510,7 +2548,7 @@ reference is this book -
 
 The schema for the resulting Stag structures can be seen to conform to
 a schema that is dynamically determined at query-time from the
-underlying relational schema and from the structure of the query itself.
+underlying relational schema and from the specification of the query itself.
 
 =head1 CLASS METHODS
 
@@ -2519,7 +2557,7 @@ underlying relational schema and from the structure of the query itself.
 
   Usage   - $dbh = DBIx::DBStag->connect($DSN);
   Returns - L<DBIx::DBStag>
-  Args    - see L<DBI>
+  Args    - see the connect() method in L<DBI>
 
 =cut
 
@@ -2532,7 +2570,8 @@ underlying relational schema and from the structure of the query itself.
 Executes a query and returns a L<Data::Stag> structure
 
 An optional nesting expression can be passed in to control how the
-relation is decomposed into a tree
+relation is decomposed into a tree. The nesting expression can be XML
+or an S-Expression; see above for details
 
 =cut
 
@@ -2542,7 +2581,7 @@ relation is decomposed into a tree
  Returns - string
  Args    - sql string, [nesting string]
 
-As selectall_stag(), but the results are transformed into an SQL string
+As selectall_stag(), but the results are transformed into an XML string
 
 =cut
 
@@ -2566,7 +2605,7 @@ S-Expression string; see L<Data::Stag> for more details.
 As selectall_stag(), but the results are transformed into SAX events
 
 [currently this is just a wrapper to selectall_xml but a genuine event
-model will later be used]
+generation model will later be used]
 
 =cut
 
@@ -2623,11 +2662,14 @@ CREATE TABLE statements.
 
 =head1 BUGS
 
-This is alpha software! Probably several
+This is alpha software! Probably several bugs.
+
+The SQL parsing can be quite particular - sometimes the SQL can be
+parsed by the DBMS but not by DBStag. The error messages are not always helpful.
+
+There are probably a few cases the SQL SELECT parsing grammar cannot deal with.
 
 If you want to select from views, you need to hack DBIx::DBSchema (as of v0.21)
-
-There are probably a few cases the SQL SELECT parsing grammar cannot deal with
 
 =head1 TODO
 
