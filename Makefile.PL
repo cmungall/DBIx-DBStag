@@ -1,4 +1,4 @@
-#$Id: Makefile.PL,v 1.3 2003/04/30 05:50:58 cmungall Exp $
+#$Id: Makefile.PL,v 1.4 2003/06/04 02:54:32 cmungall Exp $
 
 # This Makefile.PL was cut-n-pasted from the DBIx::Abstract
 # Nakefile.PL, by Andrew Turner <turnera@cpan.org>
@@ -108,6 +108,7 @@ WriteMakefile(
                                  'scripts/selectall_html.pl',
                                  'scripts/stag-autoddl.pl',
                                  'scripts/stag-storenode.pl',
+                                 'scripts/ubiq',
 				],
 	      
 	      clean => {
