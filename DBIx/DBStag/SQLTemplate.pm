@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.18 2004/04/02 04:03:33 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.19 2004/04/02 21:12:26 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -22,7 +22,7 @@ use DBIx::DBStag::Constraint;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
-$VERSION = '0.02';
+$VERSION='0.03';
 
 
 sub DEBUG {
