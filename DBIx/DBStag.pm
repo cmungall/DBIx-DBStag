@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.42 2005/03/11 02:12:24 cmungall Exp $
+# $Id: DBStag.pm,v 1.43 2005/03/18 18:27:41 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1938,6 +1938,14 @@ sub rmake_nesting {
     }
 }
 
+# if true, a metadata tag will be added to stag nodes selected from db
+sub include_metadata {
+    my $self = shift;
+    $self->{_include_metadata} = shift if @_;
+    return $self->{_include_metadata};
+}
+
+
 # last SQL SELECT statement executed
 sub last_stmt {
     my $self = shift;
@@ -2020,12 +2028,17 @@ sub selectall_rows {
 # ---------------------------------------
 sub selectall_stag {
     my $self = shift;
-    my ($sql, $nesting, $bind, $template, $return_arrayref) = 
-      rearrange([qw(sql nesting bind template return_arrayref)], @_);
+    my ($sql, $nesting, $bind, $template, $return_arrayref, $include_metadata) = 
+      rearrange([qw(sql nesting bind template return_arrayref include_metadata)], @_);
     my $prep_h = $self->prepare_stag(@_);
     my $cols = $prep_h->{cols};
     my $sth = $prep_h->{sth};
     my $exec_args = $prep_h->{exec_args};
+
+    if (!defined($include_metadata)) {
+        $include_metadata = $self->include_metadata;
+    }
+
     # TODO - make this event based so we don't have to
     # load all into memory
     my $rows =
@@ -2048,6 +2061,23 @@ sub selectall_stag {
                          -alias=>$prep_h->{alias},
                          -nesting=>$prep_h->{nesting}
                         );
+    if ($include_metadata) {
+        my ($last_sql, @sql_args) = @{$self->last_sql_and_args || []};
+        my @kids = $stag->kids;
+        my @bind_nodes;
+        if ($bind && ref($bind) eq 'HASH') {
+            @bind_nodes = (stag_unflatten(argset=>[%$bind]));
+        }
+        unshift(@kids,
+                [dbstag_metadata=>[
+                                   [sql=>$last_sql],
+                                   [nesting=>$nesting],
+                                   [template=>$template],
+                                   @bind_nodes,
+                                   (map {[exec_arg=>$_]} @sql_args)
+                                  ]]);
+        $stag->kids(@kids);
+    }
     return $stag;
 }
 

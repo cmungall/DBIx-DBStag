@@ -27,6 +27,7 @@ my @order;
 my $color;
 my $out;
 my $sgml;
+my $metadata;
 my @matrixcols;
 my @matrixcells;
 
@@ -60,6 +61,7 @@ GetOptions(
 	   "verbose|v"=>\$verbose,
            "colour|color"=>\$color,
 	   "out|o=s"=>\$out,
+           "metadata"=>\$metadata,
 	   "trace"=>\$ENV{DBSTAG_TRACE},
           );
 @ARGV = map { if (/^\/(.*)/) {$template_name=$1;()} else {$_} } @ARGV;
@@ -177,6 +179,8 @@ if (!$db) {
 # QUERY DB
 my $dbh = 
   DBIx::DBStag->connect($db, $user, $pass);
+
+$dbh->include_metadata($metadata);
 
 my $xml;
 my @sel_args = ($sql, $nesting);
