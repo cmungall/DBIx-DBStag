@@ -11,8 +11,11 @@ use lib split(/:/, $ENV{STAGLIB} || '');
 use IO::String;
 use DBIx::DBStag;
 use CGI qw/:standard/;
+use vars qw(%IS_FORMAT_FLAT $cscheme);
 
-my $cscheme =
+%IS_FORMAT_FLAT =
+  map {$_=>1} qw(flat-CSV flat-TSV flat-HTML-table);
+$cscheme =
   {
    'keyword'=>'cyan',
    'variable'=>'magenta',
@@ -37,8 +40,8 @@ my $loc;
 my $templates = [];
 my $varnames = [];
 my $options = {};
-my $nesting;
-my $rows = [];
+my $nesting = '';
+my $rows;
 my $template;
 my $template_name = '';
 my %exec_argh = ();
@@ -52,6 +55,7 @@ my $ofh = \*STDOUT;
 do "dbconf.pl";
 die $@ if $@;
 
+my $format = $cgi->param('format') || 'sxpr';
 my $dbname = $cgi->param('dbname');
 if (@dbnames == 1) {
     $dbname = $dbnames[0];
@@ -59,8 +63,7 @@ if (@dbnames == 1) {
 if ($dbname) {
     setdb($dbname);
 }
-if ($cgi->param('submit') eq 'selecttemplate' &&
-    $cgi->param('template')) {
+if ($cgi->param('template')) {
     settemplate($cgi->param('template'));
 }
 foreach (@$varnames) {
@@ -71,63 +74,96 @@ foreach (@$varnames) {
 }
 if ($template && $cgi->param('submit') eq 'exectemplate') {
     $dbh = DBIx::DBStag->connect($dbname);
-    $stag =
-      $dbh->selectall_stag(
-			   -template=>$template,
-			   -bind=>\%exec_argh,
-			   -nesting=>$nesting,
-			  );
+    if ($cgi->param('where')) {
+	$template->set_clause(where=>$cgi->param('where'));
+    }
+    if ($cgi->param('select')) {
+	$template->set_clause(where=>$cgi->param('select'));
+    }
+    if (is_format_flat($format)) {
+	$rows =
+	  $dbh->selectall_rows(
+			       -template=>$template,
+			       -bind=>\%exec_argh,
+			      );
+    }
+    else {
+	$stag =
+	  $dbh->selectall_stag(
+			       -template=>$template,
+			       -bind=>\%exec_argh,
+			       -nesting=>$nesting,
+			      );
+    }
 }
 
 www($cgi);
 
 sub g_title {
-    "U B I Q"
+    "U * B * I * Q";
 }
 
-sub www {
-    my $cgi = shift;
-
-    print(
-	  header, 
-	  start_html(g_title), 
-	  h1(g_title), 
-	  start_form(-action=>'ubiq.cgi'),
-	  "Database",
-	  popup_menu(-name=>'dbname',
-		      -values=>[sort {$a cmp $b} @dbnames],
-		      -onChange=>"submit()",
-		    ),
-	  submit(-name=>'submit',
-		 -value=>"selectdb"),
-	  hr,
-	  attr_settings(),
-	  ($stag ? stag_detail($stag) : ''),
-	  ($template ? template_detail([$template]) : ''),
-	  hr,
-	  h3("Choose a template:"),
-	  template_summary($templates),
-	  submit(-name=>'submit',
-		 -value=>"selecttemplate"),
-	  hr,
-	  ($template ? '' : template_detail($templates)),
-	  );
-	   
+sub href {
+    my $url = shift;
+    my $n = shift || $url;
+    "<a href=\"$url\">$n</a>";
 }
-sub template_summary {
+
+
+sub hdr {
+    (h1(g_title), 
+     href("ubiq.cgi", "Ubiq"),
+     ' | ',
+     href("ubiq.cgi?help=1", "Help"),
+     br,
+     href('#templates', '>>Templates'),
+    );
+
+}
+
+sub query_results {
+    (
+     ($stag ? stag_detail($stag) : ''),
+     ($rows ? rows_detail($rows) : ''),
+    );
+}
+
+sub is_format_flat {
+    my $f = shift;
+    $IS_FORMAT_FLAT{$f};
+}
+sub keep {
+    join('&',
+	 map {"$_=".param(escapeHTML($_))} grep {param($_)} qw(db template format save mode));
+}
+
+sub template_chooser {
     my $templates = shift;
-    my %labels =
-      map {
-	  ($_->name => $_->name)
-      } @$templates;
-    return
-      radio_group(-name=>'template',
-		  -values=>[values %labels],
-		  -labels=>\%labels,
-		  -linebreak=>'true',
-		  -columns=>4,
-		  -onChange=>"submit(selecttemplate)",
-		 );
+    my $KEEP = keep;
+    return 
+      table(Tr({-valign=>"TOP"},
+	       [
+		map {
+		    my $is_selected = $_->name eq $template_name;
+		    my $h = {};
+		    if ($is_selected) {
+			$h = {bgcolor=>'red'}
+		    }
+		    my $desc = $_->desc;
+		    my $name = $_->name;
+		    my $nl = "\n";
+		    $desc =~ s/\n/\<br\>/gs;
+		    td($h,
+		       [
+			href("#$name", '[scroll]'),
+#			href("#$name", '[view]'),
+			href(sprintf('ubiq.cgi?%s&template=%s', $KEEP, $name),
+			     strong($name)),
+			em($desc),
+		       ])
+		} @$templates,
+		
+	       ]));
 }
 
 sub setdb {
@@ -165,15 +201,50 @@ sub attr_settings {
     return unless $template;
     my @vals = ();
     my @popups = ();
-    my $t =
-      table(Tr({},
-	       [
-		map {td([$_, textfield("attr_$_")])} @$varnames
-	       ]));
+    my @extra = ();
     
-    return $t .
-      submit(-name=>'submit',
-	     -value=>'exectemplate');
+    return 
+      (
+       hr,
+       "Selected Template: ",
+       strong($template_name),
+       br,
+       submit(-name=>'submit',
+	      -value=>'exectemplate'),
+       table({-border=>1},
+	     Tr({-valign=>"TOP"},
+		[td([
+		     table(Tr({},
+			      [
+			       map {
+				   td([$_, textfield("attr_$_")])
+			       } @$varnames
+			      ])),
+		     table(Tr({},
+			      [td([
+				   join(br,
+					"Customize SQL SELECT:",
+					textarea(-name=>'select'),
+					"Customize SQL WHERE:",
+					textarea(-name=>'where'),
+					"Custom Full SQL Query:",
+					textarea(-name=>'sql'),
+					"Nesting tree:",
+					textarea(-name=>'nesting'),
+				       )
+					
+				  ])])),
+		     
+		    ])])),
+       popup_menu(-name=>'format',
+		  -values=>[qw(sxpr itext XML nested-HTML flat-TSV flat-CSV flat-HTML-table)]),
+       checkbox(-name=>'save',
+		-value=>1,
+		-label=>'Save Results to Disk'),
+       br,
+       submit(-name=>'submit',
+	      -value=>'exectemplate'),
+       hr);
 }
 
 sub template_detail {
@@ -183,19 +254,77 @@ sub template_detail {
 	  my $io = IO::String->new;
 	  $_->show($io, $cscheme, \&htmlcolor);
 	  my $sr = $io->string_ref;
-	  table({-border=>1},
-		Tr(
-		   [td(["<pre>$$sr</pre>"])]))
-      } @$templates;
-    return join("\n", @tbls);
+	  ('<a name="'.$_->name.'"',
+	   'template: ',
+	   em($_->name),
+	   table({-border=>1},
+		 Tr(
+		    [td(["<pre>$$sr</pre>"])])))
+	} @$templates;
+    return '<a name="templates">'.join("\n", @tbls);
 }
 
 sub stag_detail {
     my $stag = shift;
-    my $out = $stag->sxpr;
-    table({-border=>1},
-	  Tr({},
-	     td(["<pre>$out</pre>"])));
+#    my $W = Data::Stag->getformathandler($format || 'sxpr');
+#    $stag->events($W);
+#    my $out = $W->popbuffer;
+    my $out = $stag->generate(-fmt=>$format);
+    return resultbox($out);
+}
+
+sub cell {
+    my $cell = shift;
+    if (!defined($cell)) {
+	return '<font color="red">NULL</font>';
+    }
+    $cell;
+}
+
+sub rows_detail {
+    my $rows = shift;
+    if ($format eq 'flat-HTML-table') {
+	my $hdr = shift @$rows;
+	h2('Results').
+	  table({-border=>1, -bgcolor=>'yellow'},
+		Tr({},
+		   [th([@$hdr]),
+		    map {td([map {cell($_)} @$_])} @$rows]));
+    }
+    else {
+	my $j = "\t";
+	if ($format eq 'flat-CSV') {
+	    $j = ',';
+	}	
+	my $out = join("\n",
+		       map {
+			   join($j,
+				map {escape($_, ("\n"=>'\n', $j=>"\\$j"))} @$_)
+		       } @$rows);
+	resultbox($out);
+    }
+}
+sub escape {
+    my $s = shift;
+    my %cmap = @_;
+    $cmap{'\\'} = '\\\\';
+    my @from = keys %cmap;
+    my @to = map{$cmap{$_}} @from;
+    my $f = join('', @from);
+    my $t = join('', @to);
+    $s =~ tr/$f/$t/;
+    $s;
+}
+
+sub resultbox {
+    my $out = shift;
+    if (param('save')) {
+	return $out;
+    }
+    h2('Results').
+      table({-border=>1},
+	    Tr({},
+	       td({bgcolor=>"yellow"},["<pre>$out</pre>"])));
 }
 
 sub msg {
@@ -210,4 +339,52 @@ sub htmlcolor {
     else {
 	"<font color=\"$c\">";
     }
+}
+
+
+# ++++++++++++++++++++++++++++++++++++++++++++++++
+#
+# MAIN PAGE
+#
+# ++++++++++++++++++++++++++++++++++++++++++++++++
+
+sub www {
+    my $cgi = shift;
+
+    if (param('save')) {
+	print(header({-type=>"text/text"}),
+	      query_results);
+	return;
+    }
+
+    print(
+	  header, 
+	  start_html(g_title), 
+	  hdr,
+	  start_form(-action=>'ubiq.cgi', -method=>'GET'),
+	  "Database",
+	  popup_menu(-name=>'dbname',
+		      -values=>[sort {$a cmp $b} @dbnames],
+		      -onChange=>"submit()",
+		    ),
+	  submit(-name=>'submit',
+		 -value=>"selectdb"),
+	  " Query Constraint Mode: ",
+	  popup_menu(-name=>'mode',
+		     -values=>[qw(Basic Advanced Custom-SQL)],
+		     -onChange=>'submit()'),
+	  query_results,
+	  attr_settings(),
+	  ($template ? template_detail([$template]) : ''),
+	  hr,
+	  h3("Choose a template:"),
+	  template_chooser($templates),
+	  submit(-name=>'submit',
+		 -value=>"selecttemplate"),
+	  hr,
+	  ($template ? '' : template_detail($templates)),
+	  hidden('template', param('template')),
+	  end_form,
+	  );
+	   
 }
