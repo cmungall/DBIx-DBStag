@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.11 2003/07/16 21:35:12 cmungall Exp $
+# $Id: DBStag.pm,v 1.12 2003/07/30 02:51:30 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -193,6 +193,7 @@ sub find_templates_by_schema {
 
 sub template_list {
     my $self = shift;
+    my %already_got = ();
     if (!$self->{_template_list}) {
         my $path = $ENV{DBSTAG_TEMPLATE_DIRS} || '.';
         my @dirs = split(/:/, $path);
@@ -204,7 +205,8 @@ sub template_list {
                     require "DBIx/DBStag/SQLTemplate.pm";
                     my $template = DBIx::DBStag::SQLTemplate->new;
                     $template->parse($fn);
-                    push(@templates, $template);
+                    push(@templates, $template) unless $already_got{$template->name};
+		    $already_got{$template->name} = 1;
                 }
             }
         }

@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.6 2003/07/16 21:35:12 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.7 2003/07/30 02:51:30 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -51,6 +51,15 @@ sub new {
     $self->cached_sth({});
     $self;
 }
+
+
+=head2 name
+
+  Usage   -
+  Returns -
+  Args    -
+
+=cut
 
 sub name {
     my $self = shift;
@@ -602,6 +611,94 @@ sub throw {
     printf STDERR $fmt, @_;
     print STDERR "\n";
     confess;
+}
+
+
+sub show {
+    my $t = shift;
+    my $fh = shift;
+    my %cscheme = %{shift || {}};
+
+    require "Term/ANSIColor.pm";
+
+    my $n = $t->name;
+    my $clauses = $t->sql_clauses;
+    my $props = $t->properties;
+    my $c0 = color('reset');
+    my $c1 = color($cscheme{variable});
+    my $c2 = color($cscheme{keyword});
+    my $c3 = color($cscheme{block});
+    sub color {
+	Term::ANSIColor::color(@_);
+    }
+    sub keyword {
+	my $color = $cscheme{keyword};
+	color($color) . "@_" . color('reset');
+    }
+    sub comment {
+	my $color = $cscheme{comment};
+	color($color) . "@_" . color('reset');
+    }
+    sub block {
+	my $color = $cscheme{block};
+	color($color) . "@_" . color('reset');
+    }
+    sub property {
+	my $color = $cscheme{property};
+	color($color) . "@_" . color('reset');
+    }
+
+#    my $c0 = 'reset';
+#    my $c1 = $cscheme{variable};
+#    my $c2 = $cscheme{keyword};
+#    my $c3 = $cscheme{block};
+
+    print $fh comment("+" x 60), "\n";
+    print $fh comment("++++  "), keyword($n), ' ' x (50 - length($n)), comment("++++\n");
+    print $fh comment("+" x 60), "\n";
+
+    foreach my $clause (@$clauses) {
+	my ($n, $c) = ($clause->{name}, $clause->{value});
+	print $fh keyword("$n ");
+	if ($c =~ /\[.*\]/s) {
+#	    $c =~ s/(\[.*\])/block($1)/gse;
+	    $c =~ s/\[/$c3\[$c0/g;
+	    $c =~ s/\]/$c3\]$c0/g;
+	    $c =~ s/=\>/$c2=\>$c0/gs;
+	    $c =~ s/(\&\S+\&)/$c1$1$c0/gs;
+	    print $fh $c;
+	    $c = '';
+	}
+	if ($n =~ /^use/i) {
+	    $c =~ s/\(/$c3\($c0/g;
+	    $c =~ s/\)/$c3\)$c0/g;
+#	    print $fh $c;
+#	    $c = '';
+	}
+	while ($c =~ /(\S+)(\s*)(.*)/) {
+	    my ($w, $sp, $next) = ($1, $2, $3);
+	    if ($w =~ /^[A-Z]+$/) {
+		print $fh keyword($w);
+	    }
+	    else {
+		print $fh $w;
+	    }
+	    print $fh $sp;
+	    $c = $next;
+	}
+	print $fh "\n";
+    }
+    print $fh comment("// -- METADATA --\n");
+    foreach my $p (@$props) {    
+	my ($n, $v) = ($p->{name}, $p->{value});
+	print $fh property("$n: ");
+	print $fh $v;
+	print $fh "\n";
+    }
+    print $fh comment("// -- END OF TEMPLATE --\n");
+    print $fh comment("=" x 60);
+    print $fh "\n";
+    print $fh "$c0\n\L";
 }
 
 
