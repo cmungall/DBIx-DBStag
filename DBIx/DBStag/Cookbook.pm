@@ -180,9 +180,29 @@ We must create a basic resources file, currently containing one db:
 
 You should be able to use the interface via http://localhost/cgi-bin/cia/ubiq.cgi
 
+You can customize this by overriding some of the existing display functions;
+
+  cat > /usr/local/httpd/cgi-bin/cia/ubiq-customize.pl
+  # --- CUSTOM SETTINGS
+  {
+   no warnings 'redefine';
+   
+   *g_title = sub {
+       "U * B * I * Q - CIA World Factbook";
+   };
+   *short_intro = sub {
+       "Demo interface to CIA World Factbook"
+   };
+   add_initfunc(sub {
+  		   $dbname = 'cia';
+  		   $schema = 'cia';
+  	       });
+  }
+
+
 From here on you can customise the web interface, create new
-templates, integrate this with other data. Consult L<DBIx::DBStag> for
-further details.
+templates, integrate this with other data. Consult L<DBIx::DBStag> and
+the script B<ubiq.cgi> for further details.
 
 =head1 WEBSITE
 

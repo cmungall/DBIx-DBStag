@@ -132,21 +132,34 @@ sub ubiq {
     };				# end of sub: g_title
 
     # ++++++++++++++++++++++++++++++++++++++++++++++++++
-    # hdr
+    # short_intro
     #
     #
     # ++++++++++++++++++++++++++++++++++++++++++++++++++
-    sub hdr;			#
-    *hdr = sub {
+    sub short_intro;		#
+    *short_intro = sub {
+	"This is the generic UBIQ interface";
+    };				# end of sub: short_intro
+
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++
+    # top_of_page
+    #
+    #
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++
+    sub top_of_page;			#
+    *top_of_page = sub {
 	(h1(g_title), 
 	 href("ubiq.cgi", "Ubiq"),
 	 ' | ',
 	 href("ubiq.cgi?help=1", "Help"),
 	 br,
 	 href('#templates', '>>Templates'),
+	 br,
+	 short_intro,
+	 hr,
 	);
 
-    };				# end of sub: hdr
+    };				# end of sub: top_of_page
 
     # ++++++++++++++++++++++++++++++++++++++++++++++++++
     # footer
@@ -158,7 +171,7 @@ sub ubiq {
 	(hr,
 	 href('http://stag.sourceforge.net'),
 	 br,
-	 font('$Id: ubiq.cgi,v 1.4 2003/08/04 01:42:17 cmungall Exp $', (size=>-2)),
+	 myfont('$Id: ubiq.cgi,v 1.5 2003/08/04 02:22:22 cmungall Exp $', (size=>-2)),
 	);
     };				# end of sub: footer
 
@@ -411,9 +424,8 @@ sub ubiq {
     #
     # ++++++++++++++++++++++++++++++++++++++++++++++++++
     sub settemplate;		#
-    *settemplate = sub {
-	my $n = param('template');
-	return unless $n;
+    *settemplate = sub ($) {
+	my $n = shift;
 	my @matches = grep {$_->name eq $n} @$templates;
 	die "looking for $n, got @matches" unless @matches == 1;
 	$template = shift @matches;
@@ -479,7 +491,7 @@ sub ubiq {
 	print(
 	      header, 
 	      start_html(g_title), 
-	      hdr,
+	      top_of_page,
 	      start_form(-action=>'ubiq.cgi', -method=>'GET'),
 
 	      # DATABASE SELECTION
@@ -521,27 +533,43 @@ sub ubiq {
     #
     # ================================
 
-    do "dbconf.pl";
-    die $@ if $@;
+    my @initfuncs = ();
 
-    $format = param('format') || 'sxpr';
-    $dbname = param('dbname');
-    if (@dbnames == 1) {
-	# only one to choose from; autoselect
-	$dbname = $dbnames[0];
+    *add_initfunc = sub {
+	push(@initfuncs, shift);
+    };
+
+    add_initfunc(sub {
+		     $format = param('format') || 'sxpr';
+		     $dbname = param('dbname');
+		     if (@dbnames == 1) {
+			 # only one to choose from; autoselect
+			 $dbname = $dbnames[0];
+		     }
+		     
+		     setdb;                # sets $dbh
+
+		     # sets $template $varnames
+		     settemplate(param('template'))
+		       if param('template');
+		     
+		     # set variable bindings
+		     foreach (@$varnames) {
+			 my $v = param("attr_$_");
+			 if ($v) {
+			     $v =~ s/\*/\%/g;
+			     $exec_argh{$_} = $v;
+			 }
+		     }
+		 });
+
+    if (-f 'ubiq-customize.pl') {
+	eval `cat ubiq-customize.pl`;
+	die $@ if $@;
     }
 
-    setdb;                # sets $dbh
-    settemplate;          # sets $template $varnames
 
-    # set variable bindings
-    foreach (@$varnames) {
-	my $v = param("attr_$_");
-	if ($v) {
-	    $v =~ s/\*/\%/g;
-	    $exec_argh{$_} = $v;
-	}
-    }
+    $_->() foreach @initfuncs;
 
     # execute query
     if ($template && param('submit') eq 'exectemplate') {
@@ -593,25 +621,25 @@ sub ubiq {
 #
 #
 # ++++++++++++++++++++++++++++++++++++++++++++++++++
-sub href ($$) {
+sub href ($) {
     my $url = shift;
     my $n = shift || $url;
     "<a href=\"$url\">$n</a>";
 }				# end of sub: href
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++
-# font
+# myfont
 #
 #
 # ++++++++++++++++++++++++++++++++++++++++++++++++++
-sub font ($%) {
+sub myfont ($%) {
     my $str = shift;
     my %h = @_;
     sprintf("<font %s>$str</font>",
 	    join(' ',
 		 map {sprintf('%s="%s"',
 			      $_, $h{$_})} keys %h));
-}				# end of sub: font
+}				# end of sub: myfont
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++
 # escape

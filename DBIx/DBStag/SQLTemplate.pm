@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.10 2003/08/04 00:28:24 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.11 2003/08/04 02:22:24 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -740,7 +740,7 @@ sub show {
 #	    print $fh $c;
 #	    $c = '';
 	}
-	while ($c =~ /(\S+)(\s*)(.*)/) {
+	while ($c =~ /(\S+)(\s*)(.*)/s) {
 	    my ($w, $sp, $next) = ($1, $2, $3);
 	    if ($w =~ /^[A-Z]+$/) {
 		print $fh $keyword->($w);
