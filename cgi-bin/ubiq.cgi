@@ -194,7 +194,7 @@ sub ubiq {
 	(hr,
 	 href('http://stag.sourceforge.net'),
 	 br,
-	 myfont('$Id: ubiq.cgi,v 1.6 2003/08/20 19:21:50 cmungall Exp $x',
+	 myfont('$Id: ubiq.cgi,v 1.7 2004/03/19 01:05:38 cmungall Exp $x',
 		(size=>-2)),
 	);
     };				# end of sub: footer
@@ -675,26 +675,33 @@ sub ubiq {
 	eval {
 	    conn();
 	    
+            my $no_query_params_set = !scalar(keys %exec_argh);
 	    if (param('where')) {
 		$template->set_clause(where=>param('where'));
+                $no_query_params_set = 0;
 	    }
 	    if (param('select')) {
 		$template->set_clause(where=>param('select'));
 	    }
-	    if (is_format_flat) {
-		$rows =
-		  $dbh->selectall_rows(
-				       -template=>$template,
-				       -bind=>\%exec_argh,
-				      );
-	    } else {
-		$stag =
-		  $dbh->selectall_stag(
-				       -template=>$template,
-				       -bind=>\%exec_argh,
-				       -nesting=>$nesting,
-				      );
-	    }
+            if ($no_query_params_set) {
+                $errmsg = h2("No Query Constraints Set");
+            }
+            else {
+                if (is_format_flat) {
+                    $rows =
+                      $dbh->selectall_rows(
+                                           -template=>$template,
+                                           -bind=>\%exec_argh,
+                                          );
+                } else {
+                    $stag =
+                      $dbh->selectall_stag(
+                                           -template=>$template,
+                                           -bind=>\%exec_argh,
+                                           -nesting=>$nesting,
+                                          );
+                }
+            }
 	};
 	if ($@) {
 	    my $err = $@;
