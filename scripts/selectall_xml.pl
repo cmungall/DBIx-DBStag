@@ -236,7 +236,8 @@ if ($@) {
 
 $dbh->disconnect;
 if ($show) {
-    print $dbh->last_stmt->xml;
+    my ($sql, @exec_args) = $dbh->last_sql_and_args;
+    print "DBI SQL:\n$sql\n\nARGUMENT BINDINGS: @exec_args\n";
 }
 #print $xml;
 

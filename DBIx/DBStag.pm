@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.26 2004/04/19 02:10:03 cmungall Exp $
+# $Id: DBStag.pm,v 1.27 2004/04/30 19:37:29 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1437,6 +1437,13 @@ sub last_stmt {
     return $self->{_last_stmt};
 }
 
+sub last_sql_and_args {
+    my $self = shift;
+    $self->{_last_sql_and_args} = shift if @_;
+    return $self->{_last_sql_and_args};
+}
+
+
 sub sax_handler {
     my $self = shift;
     $self->{_sax_handler} = shift if @_;
@@ -1863,6 +1870,7 @@ sub prepare_stag {
     }
     trace(0, "SQL:$sql");
     trace(0, "Exec_args: @exec_args") if @exec_args;
+    $self->last_sql_and_args([$sql, @exec_args]);
     return 
       {
        sth=>$sth,
