@@ -85,6 +85,7 @@ my $rset = $dbh->selectall_stag($query
                                );
 print $rset->sxpr;
 my $joe = $rset->getnode_person;
+print $joe->sxpr;
 my $OLD_ADDRESS = $joe->sgetnode_homeaddress->sgetnode_address->sget_addressline;
 
 $joe->sgetnode_homeaddress->sgetnode_address->set_addressline($NEW_ADDRESS);

@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.20 2004/02/27 17:14:53 cmungall Exp $
+# $Id: DBStag.pm,v 1.21 2004/04/02 00:46:08 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1466,6 +1466,40 @@ sub selectall_stag {
     my $self = shift;
     my ($sql, $nesting, $bind, $template, $return_arrayref) = 
       rearrange([qw(sql nesting bind template return_arrayref)], @_);
+    my $prep_h = $self->prepare_stag(@_);
+    my $cols = $prep_h->{cols};
+    my $sth = $prep_h->{sth};
+    my $exec_args = $prep_h->{exec_args};
+    # TODO - make this event based so we don't have to
+    # load all into memory
+    my $rows =
+      $self->dbh->selectall_arrayref($sth, undef, @$exec_args);
+    if ($return_arrayref) {
+	my @hdrs = ();
+	for (my $i=0; $i<@$cols; $i++) {
+	    my $h = $prep_h->{col_aliases_ordered}->[$i] || $cols->[$i];
+	    push(@hdrs, $h);
+	}
+	return [\@hdrs, @$rows];
+    }
+
+    trace(0, sprintf("Got %d rows\n", scalar(@$rows)));
+    # --- reconstruct tree from relations
+    my $stag =
+      $self->reconstruct(
+                         -rows=>$rows,
+                         -cols=>$cols,
+                         -alias=>$prep_h->{alias},
+                         -nesting=>$prep_h->{nesting}
+                        );
+    return $stag;
+}
+
+sub prepare_stag {
+    my $self = shift;
+    my ($sql, $nesting, $bind, $template, $return_arrayref) = 
+      rearrange([qw(sql nesting bind template return_arrayref)], @_);
+
     my $parser = $self->parser;
 
     my $sth;
@@ -1779,32 +1813,24 @@ sub selectall_stag {
 #	($sql, $sth, @exec_args) = 
 #	  $template->prepare($self->dbh, $bind);
     }
+    else {
+        $sth = $self->dbh->prepare($sql);
+    }
     my $sql_or_sth = $sql;
     if ($sth) {
 	$sql_or_sth = $sth;
     }
-    trace(0, "SQL:$sql_or_sth");
-    trace(0, "Exec_args: @exec_args") if $sth;
-    my $rows =
-      $self->dbh->selectall_arrayref($sql_or_sth, undef, @exec_args);
-    trace(0, sprintf("Got %d rows\n", scalar(@$rows)));
-    if ($return_arrayref) {
-	my @hdrs = ();
-	for (my $i=0; $i<@cols; $i++) {
-	    my $h = $col_aliases_ordered[$i] || $cols[$i];
-	    push(@hdrs, $h);
-	}
-	return [\@hdrs, @$rows];
-    }
-
-    # --- reconstruct tree from relations
-    my $stag =
-      $self->reconstruct(
-                         -rows=>$rows,
-                         -cols=>\@cols,
-                         -alias=>$aliasstruct,
-                         -nesting=>$nesting);
-    return $stag;
+    trace(0, "SQL:$sql");
+    trace(0, "Exec_args: @exec_args") if @exec_args;
+    return 
+      {
+       sth=>$sth,
+       exec_args=>\@exec_args,
+       cols=>\@cols,
+       col_aliases_ordered=>\@col_aliases_ordered,
+       alias=>$aliasstruct,
+       nesting=>$nesting
+      };
 }
 
 
@@ -1953,7 +1979,7 @@ sub reconstruct {
                                        [name=>$2]]);
                   }
                   else {
-                      confess $_;
+                      confess "I am confused by this column: $_";
                   }
               }
           } @$cols;
@@ -2636,7 +2662,7 @@ sub selectgrammar {
            }
            | <error>
 
-	 operator: '+' | '-' | '*' | '/'
+	 operator: '+' | '-' | '*' | '/' | '||'
 	   
 
          fromtables: jtable
@@ -3023,7 +3049,7 @@ under 'person', and the meaning would not be obvious. Note how the
 contents of the SQL query dynamically modifies the schema/structure of
 the result tree.
 
-NOTE ON SQL SYNTAX
+=head3 NOTE ON SQL SYNTAX
 
 Right now, DBStag is fussy about how you specify aliases; you must use
 B<AS> - you must say
@@ -3157,6 +3183,24 @@ As you can see, this is a little more verbose.
 Most command line scripts that use this module should allow
 pass-through via the '-nesting' switch.
 
+=head3 Aliasing of functions and expressions
+
+If you alias a function or an expression, DBStag needs to know where
+to put the resulting column; the column must be aliased.
+
+This is inferred from the first named column in the function or
+expression; for example, in the SQL below
+
+  SELECT blah.*, foo.*, foo.x - foo.y AS z
+
+The B<z> element will be nested under the B<foo> element
+
+You can force different nesting using a double underscore:
+
+  SELECT blah.*, foo.*, foo.x - foo.y AS blah__z
+
+This will nest the B<z> element under the B<blah> element
+
 =head2 Conformance to DTD/XML-Schema
 
 DBStag returns L<Data::Stag> structures that are equivalent to a
@@ -3209,7 +3253,7 @@ or an S-Expression; see above for details
 
  Usage   - $xml = $dbh->selectall_xml($sql);
  Returns - string
- Args    - sql string, [nesting string]
+ Args    - See selectall_stag()
 
 As selectall_stag(), but the results are transformed into an XML string
 
@@ -3219,7 +3263,7 @@ As selectall_stag(), but the results are transformed into an XML string
 
  Usage   - $sxpr = $dbh->selectall_sxpr($sql);
  Returns - string
- Args    - sql string, [nesting string]
+ Args    - See selectall_stag()
 
 As selectall_stag(), but the results are transformed into an
 S-Expression string; see L<Data::Stag> for more details.
@@ -3243,7 +3287,7 @@ generation model will later be used]
 
  Usage   - $tbl = $dbh->selectall_rows($sql);
  Returns - arrayref of arrayref
- Args    - sql string, [nesting string]
+ Args    - See selectall_stag()
 
 As selectall_stag(), but the results of the SQL query are left
 undecomposed and unnested. The resulting structure is just a flat
@@ -3251,6 +3295,24 @@ table; the first row is the column headings. This is similar to
 DBI->selectall_arrayref(). The main reason to use this over the direct
 DBI method is to take advantage of other stag functionality, such as
 templates
+
+=head2 prepare_stag SEMI-PRIVATE METHOD
+
+ Usage   - $prepare_h = $dbh->prepare_stag(-template=>$template);
+ Returns - hashref (see below)
+ Args    - See selectall_stag()
+
+Returns a hashref
+
+      {
+       sth=>$sth,
+       exec_args=>\@exec_args,
+       cols=>\@cols,
+       col_aliases_ordered=>\@col_aliases_ordered,
+       alias=>$aliasstruct,
+       nesting=>$nesting
+      };
+
 
 =cut
 
@@ -3265,6 +3327,10 @@ Recursively stores a tree structure in the database
 =cut
 
 =head1 SQL TEMPLATES
+
+DBStag comes with its own SQL templating system. This allows you to
+reuse the same canned SQL or similar SQL qeuries in different
+contexts. See L<DBIx::DBStag::SQLTemplate>
 
 =head2 find_template
 

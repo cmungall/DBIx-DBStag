@@ -7,7 +7,7 @@ BEGIN {
     eval { require Test; };
     use Test;    
     use DBStagTest;
-    plan tests => 4;
+    plan tests => 5;
 }
 use DBIx::DBStag;
 use DBI;
@@ -40,6 +40,10 @@ my @missions_with_a_car =
 ok(@missions_with_a_car == 1);
 ok($missions[0]->get_codename eq 'goldfinger');
 
+
+my $out = $dbh->selectall_stag("SELECT agent.*, bureau.*, agent.firstname || agent.lastname AS agent__fullname FROM agent NATURAL JOIN bureau_to_agent NATURAL JOIN bureau");
+
 print $out->sxpr;
+ok($out->sget_agent->sget_fullname eq 'JamesBond');
 
 $dbh->disconnect;

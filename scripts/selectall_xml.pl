@@ -176,11 +176,16 @@ if ($template) {
 }
 eval {
     if ($rows) {
-	my $ar =
-	  $dbh->selectall_rows(@sel_args);
-	foreach my $r (@$ar) {
+        
+        my $prep_h = $dbh->prepare_stag(@sel_args);
+        my $cols = $prep_h->{cols};
+        my $sth = $prep_h->{sth};
+        my $exec_args = $prep_h->{exec_args};
+        my $rv = $sth->execute(@$exec_args);
+        while (my $r = $sth->fetchrow_arrayref) {
 	    printf "%s\n", join("\t", map {defined $_ ? $_ : '\\NULL'} @$r);
 	}
+        
 	$dbh->disconnect;	
 	exit 0;
     }
