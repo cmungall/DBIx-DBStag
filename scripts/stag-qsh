@@ -318,9 +318,14 @@ sub db {
     if ($dbh) {
 	$dbh->disconnect;
     }
-    $dbh = DBIx::DBStag->connect($dbname);
-    msg("Connected to $dbname");
-    setdb($dbname);
+    eval {
+	$dbh = DBIx::DBStag->connect($dbname);
+	msg("Connected to $dbname");
+	setdb($dbname);
+    };
+    if ($@) {
+	print STDERR "Could not connect to database '$dbname'\n";
+    }
     $dbh;
 }
 sub conn {
@@ -569,9 +574,8 @@ sub warnmsg {
     print "WARNING:@_\n";
 }
 sub welcome {
-    msg("Hullo. I am the Stag God. I am also a command line interface to DBStag.");
+    msg("Hello. This is the command line interface to DBStag.");
     msg("Type ? or help if you are ever confused.\n");
-    msg("You may need to type \\x to switch out of xterm mode if it acts funny.\n");
 }
 sub make_offering {
     print "Thank you! You are very kind\n";
@@ -632,9 +636,6 @@ sub help {
 	   'Perl',
 	   ' type in any perl and it will be evaluated. don\'t use my to declare',
 	   ' variables though!',
-	   '',
-	   'Offerings to the Stag God',
-	   ' type make_offering',
 	   '',
 	   'Weird stuff',
 	   '-----------',

@@ -1,4 +1,4 @@
-#$Id: Makefile.PL,v 1.5 2003/09/08 12:50:54 cmungall Exp $
+#$Id: Makefile.PL,v 1.6 2003/09/09 16:15:47 cmungall Exp $
 
 
 # This Makefile.PL was cut-n-pasted from the DBIx::Abstract
@@ -108,8 +108,11 @@ WriteMakefile(
                                  'scripts/selectall_xml.pl',
                                  'scripts/selectall_html.pl',
                                  'scripts/stag-autoddl.pl',
+                                 'scripts/stag-autotemplate.pl',
+                                 'scripts/stag-template2bin.pl',
                                  'scripts/stag-storenode.pl',
-                                 'scripts/ubiq',
+                                 'scripts/stag-qsh',
+                                 'cgi-bin/ubiq.cgi',
 				],
 	      
 	      clean => {
