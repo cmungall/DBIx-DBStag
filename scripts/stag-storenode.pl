@@ -39,7 +39,12 @@ if ($help) {
 
 #print STDERR "Connecting to $db\n";
 my $dbh = DBIx::DBStag->connect($db);
-$dbh->dbh->{AutoCommit} = 0;
+eval {
+    $dbh->dbh->{AutoCommit} = 0;
+};
+if ($@) {
+    print STDERR $@;
+}
 
 if ($trust_ids) {
     $dbh->trust_primary_key_values(1);
