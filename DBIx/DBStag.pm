@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.25 2004/04/12 18:23:07 cmungall Exp $
+# $Id: DBStag.pm,v 1.26 2004/04/19 02:10:03 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -119,13 +119,19 @@ sub resolve_dbi {
     if (!$dbi) {
 	$self->throw("database name not provided!");
     }
-    if ($dbi !~ /[;:]/) {
+    if ($dbi !~ /^dbi:/) {
 	my $rh = $self->resources_hash;
 	my $res = 
 	  $rh->{$dbi};
 	if (!$res) {
-	    $res =
-	      {loc=>"Pg:$dbi"};
+	    if ($dbi =~ /:/) {
+		$res =
+		  {loc=>"$dbi"}
+	    }
+	    else {
+		$res =
+		  {loc=>"Pg:$dbi"};
+	    }
 	}
 	if ($res) {
 	    my $loc = $res->{loc};
@@ -423,9 +429,43 @@ sub get_unique_sets {
     return @{$tableobj->unique->lol_ref || []};
 }
 
+sub mapconf {
+    my $self = shift;
+    my $fn = shift;
+    my $fh = FileHandle->new($fn) || confess("cannot open $fn");
+    my @mappings = <$fh>;
+    $fh->close;
+    $self->mapping(\@mappings);
+}
+
 sub mapping {
     my $self = shift;
-    $self->{_mapping} = shift if @_;
+    if (@_) {
+	my $ml = shift;
+	my @nu =
+	  map {
+	      if (ref($_)) {
+		  Data::Stag->nodify($_);
+	      }
+	      else {
+		  if (/(\w+)\/(\w+)\.(\w+)=(\w+)\.(\w+)/) {
+		      Data::Stag->new(map=>[
+					    [fktable_alias=>$1],
+					    [table=>$2],
+					    [col=>$3],
+					    [fktable=>$4],
+					    [fkcol=>$5]
+					   ]);
+		  }
+		  else {
+		      confess("incorrectly specified mapping: $_".
+			      "(must be alias/tbl.col=ftbl.fcol)");
+		      ();
+		  }
+	      }
+	  } @$ml;
+	$self->{_mapping} = \@nu;
+    }
     return $self->{_mapping};
 }
 
@@ -622,6 +662,7 @@ sub autoddl {
     my $self = shift;
     my $stag = shift;
     my $link = shift;
+    $stag->makeattrsnodes;
     my $schema = $stag->autoschema;
     $self->source_transforms([]);;
     $self->_autoddl($schema, undef, $link);
@@ -2207,7 +2248,7 @@ sub reconstruct {
 *normalize = \&reconstruct;
 
 # ============================
-# make_a_tree(...)
+# make_a_tree(...) RECURSIVE
 #
 # called by: reconstruct(...)
 #
@@ -2260,10 +2301,12 @@ sub make_a_tree {
 
 	if (!$rec) {
 	    my $relationcols = $cols_by_relationname{$relationname};
+	    my $has_non_null_val = grep {defined($relationrec->{$_})} @$relationcols;
+	    return unless $has_non_null_val;
 	    my $relationstruct =
 	      $tree->new($relationname=>[
 					 map {
-					     [$_ => $relationrec->{$_}]
+					     defined($relationrec->{$_}) ? [$_ => $relationrec->{$_}] : ()
 					 } @$relationcols
 					]);
 	    my $parent_relationstruct = $parent_rec_h->{struct};
@@ -2299,7 +2342,7 @@ sub make_a_tree {
     }
     foreach ($node->subnodes) {
         $self->make_a_tree($tree,
-			   $rec, 
+			   $rec,
 			   $_,
 			   \%current_relation_h,
 			   \%pkey_by_relationname,
@@ -2654,7 +2697,7 @@ sub selectgrammar {
             my $col = N(col=>[
                               [func => [
                                         [name => $item[1]->[1]],
-                                        [args => $item[3]]
+                                        [args => $item[4]]
                                        ]
                               ]
                              ]);
@@ -3327,6 +3370,22 @@ Returns a hashref
   Args    - L<Data::Stag>
 
 Recursively stores a tree structure in the database
+
+=head2 mapping
+
+  Usage   - $dbh->mapping(["alias/table.col=fktable.fkcol"]);
+  Returns - 
+  Args    - array
+
+creates a stag-relational mapping (for storing data only)
+
+=head2 mapconf
+
+  Usage   - $dbh->mapconf("mydb-stagmap.stm");
+  Returns - 
+  Args    - filename
+
+sets the conf file containing the stag-relational mappings
 
 =cut
 

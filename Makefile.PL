@@ -1,4 +1,4 @@
-#$Id: Makefile.PL,v 1.7 2004/04/02 04:12:07 cmungall Exp $
+#$Id: Makefile.PL,v 1.8 2004/04/19 02:10:02 cmungall Exp $
 
 
 # This Makefile.PL was cut-n-pasted from the DBIx::Abstract
@@ -101,6 +101,8 @@ WriteMakefile(
                          },
 	      'VERSION_FROM' => "DBIx/DBStag.pm",
 	      'PREREQ_PM'    => {
+				 'Parse::RecDescent'  => 0,
+				 'Text::Balanced'     => 0,
 				 'Data::Stag'         => 0,
 				 'DBIx::DBSchema'     => 0,
 				 'DBI'                => 0,

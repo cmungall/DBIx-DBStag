@@ -127,13 +127,17 @@ use Getopt::Long;
 my $debug;
 my $help;
 my $db;
-my $unit;
+my @units;
 my $parser;
+my @mappings;
+my $mapconf;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
-	   "unit|u=s"=>\$unit,
+	   "unit|u=s@"=>\@units,
            "parser|p=s"=>\$parser,
+	   "mapping|m=s@"=>\@mappings,
+	   "conf|c=s"=>\$mapconf,
           );
 if ($help) {
     system("perldoc $0");
@@ -144,16 +148,32 @@ if ($help) {
 my $dbh = DBIx::DBStag->connect($db);
 $dbh->dbh->{AutoCommit} = 0;
 
+if ($mapconf) {
+    $dbh->mapconf($mapconf);
+}
+if (@mappings) {
+    $dbh->mapping(\@mappings);
+}
+
+sub store {
+    my $self = shift;
+    my $stag = shift;
+    #$dbh->begin_work;
+    $dbh->storenode($stag);
+    $dbh->commit;
+    return;
+}
+
 foreach my $fn (@ARGV) {
-    if ($unit) {
-	my $H = Data::Stag->makehandler($unit=>sub {
-					    my $self = shift;
-					    my $stag = shift;
-#					    $dbh->begin_work;
-					    $dbh->storenode($stag);
-					    $dbh->commit;
-					    return;
-					});
+    if ($fn eq '-' && !$parser) {
+	$parser = 'xml';
+    }
+    if (@units) {
+	my $H = Data::Stag->makehandler(
+					map {
+					    $_ =>sub{store(@_)};
+					} @units
+				       );
 	Data::Stag->parse(-format=>$parser,-file=>$fn, -handler=>$H);
     }
     else {
