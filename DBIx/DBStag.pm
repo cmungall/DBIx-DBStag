@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.32 2004/08/16 16:59:59 cmungall Exp $
+# $Id: DBStag.pm,v 1.33 2004/09/08 00:08:36 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -823,6 +823,18 @@ sub insert_into_cache {
     my $insert_h = shift;
     my $usets = shift;
     foreach my $uset (@$usets) {
+        my @undef = grep {!defined $insert_h->{$_}} @$uset;
+        if (@undef) {
+            my @defined = grep {defined $insert_h->{$_}} @$uset;
+            trace(1, 
+                  "undefined column in unique key: $uset IN $element/[@$uset] ".
+                  join('; ', 
+                       map {"$_=$insert_h->{$_}"} @defined,
+                      )
+                 );
+            # cannot cache undefined values
+            next;
+        }
         my $cache = $self->get_tuple_idx($element, $uset);
         my $valstr = join("\t", map {$insert_h->{$_}} sort @$uset);
         $cache->{$valstr} = $insert_h;
@@ -1072,9 +1084,12 @@ sub _storenode {
         # check for either of these conditions
         my ($map) =
           grep { 
-              $_->get_table eq $element &&
-                ($_->get_fktable_alias eq $nt->element ||
-                 ($_->get_fktable eq $nt->element && !$_->get_fktable_alias))
+              $_->get_table && 
+                $_->get_table eq $element &&
+                ($_->get_fktable_alias && 
+                 $_->get_fktable_alias eq $nt->element ||
+                 ($_->get_fktable && 
+                  $_->get_fktable eq $nt->element && !$_->get_fktable_alias))
             } @$mapping;
         # check to see if sub-element has FK to this element
         if (!$map) {
@@ -1378,7 +1393,12 @@ sub _storenode {
             if (%cached_colvals) {
                 if ($pkcol) {
                     $id = $cached_colvals{$pkcol};
-                    trace(0, "CACHED $pkcol by $pkcol = $id");
+                    if ($id) {
+                        trace(0, "CACHED $pkcol  = $id");
+                    }
+                    else {
+                        trace(0, "NO CACHED COLVAL FOR $pkcol");
+                    }
                 }
 
                 # yes - has it changed?
@@ -1394,7 +1414,7 @@ sub _storenode {
                     trace(0, "WILL STORE: @x");
                 }
                 else {
-                    trace(0, "NO STORE: store_hash empty");
+                    trace(0, "UNCHANGED - WILL NOT STORE; store_hash empty");
                 }
             }
         }
@@ -1522,7 +1542,7 @@ sub _storenode {
             $self->insert_into_cache($element,
                                      \%cache_hash,
                                      \@usets);
-            trace(0, "caching $element");
+            trace(0, "CACHING: $element");
         }
 
     }  # -- end of UPDATE/INSERT
@@ -3655,12 +3675,66 @@ this will not be updated; subnodes will not be stored
   Args    - bool (optional)
 
 The default behaviour of the storenode() method is to remap all
-primary key values it comes across (for example, unique internal
+PRIMARY KEY values it comes across (for example, unique internal
 surrogate IDs from one database may not correspond to the IDs in
 another database).
 
-If this accessor is set to non-zero (true) then the primary key values
-in the XML will be used
+If you do not use primary key columns in your load xml, then you can
+ignore this accessor.
+
+If you use primary key columns in your XML, and the primary key values
+in the XML correspond exactly to the primary key values in the DB (eg
+if you do not use surrogate/auto-increment/serial PKs), then you
+should set this.  If this accessor is set to non-zero (true) then the
+primary key values in the XML will be used.
+
+If your db has surrogate/auto-increment/serial PKs, and you wish to
+use these PK columns in your XML, yet you want to make XML that can be
+exported from one db and imported into another, then the default
+behaviour will be fine.
+
+For example, if we extract a 'person' from a db with auto-increment PK
+B<id> and unique key B<ssno>, we may get this:
+
+  <person>
+    <id>23</id>
+    <name>fred</name>
+    <ssno>1234-567</ssno>
+  </person>
+
+If we then import this into an entirely fresh db, with no rows in
+table B<person>, then the default behaviour of storenode() will create a
+row like this:
+
+  <person>
+    <id>1</id>
+    <name>fred</name>
+    <ssno>1234-567</ssno>
+  </person>
+
+The PK val 23 has been mapped to 1 (all foreign keys that point to
+person.id=23 will now point to person.id=1)
+
+If we were to first call $sdbh->trust_primary_key_values(1), then
+person.id would remain to be 23. This would only be appropriate
+behaviour if we were storing back into the same db we retrieved from.
+
+=head2 is_caching_on
+
+  Usage   - $dbh->is_caching_on('person', 1)
+  Returns - bool
+  Args    - string, bool
+
+By default no in-memory caching is used. If this is set, then an
+in-memory cache is used for any particular element. No cache
+management is used, so you should be sure not to cache elements that
+will cause memory overloads.
+
+Setting this will not affect the final result, it is purely an
+efficiency measure for use with storenode().
+
+The cache is indexed by ALL unique keys for that particular
+element/table.
 
 =cut
 
