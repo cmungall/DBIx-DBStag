@@ -1,4 +1,4 @@
-#$Id: Makefile.PL,v 1.9 2004/04/26 16:02:40 cmungall Exp $
+#$Id: Makefile.PL,v 1.10 2004/07/15 19:11:48 cmungall Exp $
 
 
 # This Makefile.PL was cut-n-pasted from the DBIx::Abstract
@@ -40,7 +40,7 @@ my $TESTRECREATE  = $ENV{TESTRECREATE} || "dropdb $hostflag test; createdb $host
 
 my $source = {};
 
-foreach my $key (qw/testdsn testuser testpassword testrecreate/) {
+foreach my $key (qw/testdsn testuser testhost testpassword testrecreate/) {
   Configure($opt, $source, $key);
 }
 
@@ -59,7 +59,7 @@ foreach my $val (values %$source) {
   $slen = length($val) if length($val) > $slen;
 }
 foreach my $key (sort { $a cmp $b} keys %$opt) {
-  printf("  %-" . $keylen . "s (%-" . $slen . "s) = %s\n",
+    printf("  %-" . $keylen . "s (%-" . $slen . "s) = %s\n",
 	 $key, $source->{$key}, $opt->{$key})
 }
 
