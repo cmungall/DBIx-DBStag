@@ -71,7 +71,7 @@ my $dirstruct =
                       -rows=>\@data,
                       -top=>"dirset",
                       -noaliases=>0,
-                      -path=>"'(dirset(dir(movie(star(character 1)))))");
+                      -nesting=>"'(dirset(dir(movie(star(character 1)))))");
 
 print $dirstruct->sxpr;
 ($hdr, @data) = process(getanimaldata());
@@ -79,7 +79,7 @@ my $struct =
   $dbhstag->normalize(-top=>"animal-set",
                       -rows=>\@data,
                       -cols=>$hdr,
-                      -path=>"'(rel 1)");
+                      -nesting=>"'(rel 1)");
 
 print $struct->xml;
 ok(1);

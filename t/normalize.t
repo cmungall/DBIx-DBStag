@@ -21,7 +21,7 @@ my $dirstruct =
   $dbhstag->normalize(-top=>"director-set",
                       -rows=>\@data,
                       -cols=>$hdr,
-                      -path=>"(director(film(actor(character 1))))");
+                      -nesting=>"(director(film(actor(character 1))))");
 print $dirstruct->xml;
 my $ss = <<EOM
 (schema
@@ -79,7 +79,7 @@ my $struct =
   $dbhstag->normalize(-top=>"animal-set",
                       -rows=>\@data,
                       -cols=>$hdr,
-                      -path=>"'(rel 1)");
+                      -nesting=>"'(rel 1)");
 
 print $struct->xml;
 ok(1);

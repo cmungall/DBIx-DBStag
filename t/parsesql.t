@@ -6,7 +6,7 @@ BEGIN {
     # as a fallback
     eval { require Test; };
     use Test;    
-    plan tests => 1;
+    plan tests => 11;
 }
 use DBIx::DBStag;
 use FileHandle;

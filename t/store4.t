@@ -6,10 +6,10 @@ BEGIN {
     # as a fallback
     eval { require Test; };
     use Test;    
-    use DBIStagTest;
+    use DBStagTest;
     plan tests => 2;
 }
-use DBIx::DBIStag;
+use DBIx::DBStag;
 use DBI;
 use Data::Stag;
 use FileHandle;

@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.2 2003/04/23 04:38:17 cmungall Exp $
+# $Id: DBStag.pm,v 1.3 2003/04/30 05:01:18 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -986,6 +986,9 @@ sub selectall_stag {
 	my ($pre, $post) = ($1, $2);
 	my ($extracted, $remainder) =
 	  extract_bracketed($post, '()');
+        if ($nesting) {
+            $self->throw("nestings clash: $nesting vs $extracted");
+        }
 	$nesting = Data::Stag->parsestr($extracted);
 	$sql = "$pre $remainder";
     }
@@ -1052,6 +1055,9 @@ sub selectall_stag {
 	$nesting = rmake_nesting($fromstruct->data->[0]);
         $nesting = Data::Stag->new(top=>[$nesting]);
 	trace(0, "\n\nNesting:\n%s\n\n",  $nesting->xml);
+    }
+    if ($nesting && !ref($nesting)) {
+        $nesting = Data::Stag->parsestr($nesting);
     }
 
     # keep an array of named relations used in the query -
