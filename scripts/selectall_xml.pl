@@ -23,6 +23,7 @@ my $select;
 my $rows;
 my $writer;
 my $verbose;
+my @order;
 my $color;
 my $out;
 my $sgml;
@@ -40,6 +41,7 @@ GetOptions(
 	   "where|wh=s"=>\$where,
 	   "writer|w=s"=>\$writer,
 	   "select|s=s"=>\$select,
+	   "order=s@"=>\@order,
 	   "verbose|v"=>\$verbose,
            "colour|color"=>\$color,
 	   "out|o=s"=>\$out,
@@ -134,7 +136,7 @@ if ($help) {
 			       );
 	    }
 	    else {
-		my $desc = $template->desc;
+		my $desc = $template->desc || '';
 		$desc =~ s/\s*$//;
 		
 		printf "NAME: %s\nDESC: %s\n//\n",
@@ -161,6 +163,9 @@ if ($template) {
     }
     if ($select) {
 	$template->set_clause(select => $select);
+    }
+    if (@order) {
+	$template->set_clause(order => join(", ",@order);
     }
 
     my @args = ();
