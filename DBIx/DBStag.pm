@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.4 2003/05/22 01:30:45 cmungall Exp $
+# $Id: DBStag.pm,v 1.5 2003/05/24 00:33:23 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -82,31 +82,11 @@ sub resolve_dbi {
     my $self = shift;
     my $dbi = shift;
     if ($dbi !~ /[;:]/) {
-	my $mapf = $ENV{DBSTAG_DBIMAP_FILE};
-	if ($mapf) {
-	    my $loc;
-	    if (-f $mapf) {
-		open(F, $mapf) || $self->throw("Cannot open $mapf");
-		while(<F>) {
-		    chomp;
-		    next if /^\#/;
-		    s/^\!//;
-		    my @f=split(' ', $_);
-		    if ($f[0] &&
-			$f[0] eq $dbi &&
-			$f[1] eq "rdb") {
-			$loc = $f[2];
-			last;
-		    }
-		}
-		close(F) || $self->throw("Cannot close $mapf");
-	    }
-	    else {
-		$self->throw("$mapf does not exist");
-	    }
-	    if (!$loc) {
-		$self->throw("Could not find $dbi in $mapf");
-	    }
+	my $rh = $self->resources_hash;
+	my $res = 
+	  $rh->{$dbi};
+	if ($res) {
+	    my $loc = $res->{loc};
 	    if ($loc =~ /(\w+):(\S+)\@(\S+)/) {
 		my $dbms = $1;
 		my $dbn = $2;
@@ -115,18 +95,69 @@ sub resolve_dbi {
 		if ($dbms =~ /pg/i) {
 		    $dbi = "dbi:Pg:dbname=$dbn;host=$host";
 		}
-	    }
-	    else {
+	    } else {
 		$self->throw("$dbi -> $loc does not conform to standard.\n".
 			     "<DBMS>:<DB>\@<HOST>");
 	    }
 	}
 	else {
 	    $self->throw("$dbi is not a valid DBI locator.\n".
-			 "You do not have DBSTAG_DBIMAP_FILE set\n");
+			 "Maybe you do not have DBSTAG_DBIMAP_FILE set?\n");
 	}
     }
     return $dbi;
+}
+
+sub resources_hash {
+    my $self = shift;
+    my $mapf = $ENV{DBSTAG_DBIMAP_FILE};
+    my $rh;
+    if ($mapf) {
+	if (-f $mapf) {
+	    $rh = {};
+	    open(F, $mapf) || $self->throw("Cannot open $mapf");
+	    while (<F>) {
+		chomp;
+		next if /^\#/;
+		s/^\!//;
+		my @parts =split(' ', $_);
+		next unless (@parts >= 3);
+		my ($name, $type, $loc, $tagstr) =@parts;
+		my %tagh = ();
+		if ($tagstr) {
+		    my @parts = split(/;\s*/, $tagstr);
+		    foreach (@parts) {
+			my ($t, $v) = split(/\s*=\s*/, $_);
+			$tagh{$t} = $v;
+		    }
+		}
+		$rh->{$name} =
+		  {
+		   %tagh,
+		   name=>$name,
+		   type=>$type,
+		   loc=>$loc,
+		   tagstr=>$tagstr,
+		  };
+	    }
+	    close(F) || $self->throw("Cannot close $mapf");
+	} else {
+	    $self->throw("$mapf does not exist");
+	}
+    }
+    return $rh;
+}
+
+sub resources_list {
+    my $self = shift;
+    my $rh =
+      $self->resources_hashh;
+    my $rl;
+    if ($rh) {
+	$rl =
+	  [map {$_} values %$rh];
+    }
+    return $rl;
 }
 
 sub find_template {
@@ -150,6 +181,18 @@ sub find_template {
 	$self->throw("Could not find template \"$tname\" in: $path");
     }
     return $template;
+}
+
+sub find_schema {
+    my $self = shift;
+    my $dbname = shift;
+    my $rl = $self->resouces_list || [];
+    my ($r) = grep {$_->{name} eq $_ ||
+		      $_->{loc} eq $_} @$rl;
+    if ($r) {
+	return $r->{schema};
+    }
+    return;
 }
 
 sub setup {
@@ -1064,7 +1107,6 @@ sub selectall_stag {
 
     my $sth;
     my @exec_args = ();
-    $template;
     if (ref($sql)) {
 	$template = $sql;
     }
@@ -1252,6 +1294,9 @@ sub selectall_stag {
               }
 	      # introspect schema to get columns for this table
               my @cns = $tbl->columns;
+
+#	      trace(0, Dumper $tbl);
+	      trace(0, "TN:$tn ALIAS:$tn_alias COLS:@cns");
 
 	      # return:
               map { "$tn_alias.$_" } @cns;
@@ -1786,7 +1831,7 @@ sub make_a_tree {
 	    # level of nesting
 	    my $baserelation = $alias2baserelation{$relationname};
 	    if ($baserelation) {
-		trace(0, "R=$relationname BASE=$baserelation\n");
+#		trace(0, "R=$relationname BASE=$baserelation\n");
 		my $baserelationstruct =
 		  Data::Stag->new($baserelation =>
 				  $relationstruct->data);
@@ -2286,9 +2331,10 @@ sub AUTOLOAD {
     unless ($self->isa("DBIx::DBStag")) {
         confess("no such subroutine $name");
     }
-    confess("no connection") unless $self->dbh;
-    if ($self->dbh->can($name)) {
-        return $self->dbh->$name(@args);
+    if ($self->dbh) {
+	if ($self->dbh->can($name)) {
+	    return $self->dbh->$name(@args);
+	}
     }
     confess("no such method:$name)");
 }
@@ -2736,6 +2782,20 @@ generation model will later be used]
 Recursively stores a tree structure in the database
 
 =cut
+
+=head1 SQL TEMPLATES
+
+=head2 find_template
+
+  Usage   - $template = $dbh->find_template("my-template-name");
+  Returns - L<DBIx::DBStag::SQLTemplate>
+  Args    - template name
+
+Returns an object representing a canned paramterized SQL query. See
+L<DBIx::DBStag::SQLTemplate> for documentation on templates
+
+=cut
+
 
 
 =head1 COMMAND LINE SCRIPTS

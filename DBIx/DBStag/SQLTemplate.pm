@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.1 2003/05/22 01:32:24 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.2 2003/05/24 00:33:25 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -103,6 +103,39 @@ sub properties {
     return $self->{_properties};
 }
 
+
+# given a template and a binding, this will
+# create an SQL statement and a list of exec args
+# - the exec args correspond to ?s in the SQL
+#
+# for example WHERE foo = &foo&
+# called with binding foo=bar
+#
+# will become WHERE foo = ?
+# and the exec args will be ('bar')
+#
+# if the template contains option blocks eg
+#
+# WHERE [foo = &foo&]
+#
+# then the part in square brackets will only be included if
+# there is a binding for variable foo
+#
+# if multiple option blocks are included, they will be ANDed
+#
+#
+# if this idiom appears
+#
+# WHERE foo => &foo&
+#
+# then the operator used will either be =, LIKE or IN
+# depending on the value of the foo variable
+#
+# if the foo variable contains % it will be LIKE
+# if the foo variable contains an ARRAY it will be IN
+#
+# (See DBI manpage for discussion of placeholders)
+#
 sub get_sql_and_args {
     my $self = shift;
     my $bind = shift;
@@ -121,27 +154,96 @@ sub get_sql_and_args {
 
     my $sql_clauses = $self->sql_clauses;
     my $sql = '';
-    my %varh = ();
-    my $vari = 0;
+
     foreach my $clause (@$sql_clauses) {
 	my ($n, $v) = ($clause->{name}, $clause->{value});
 	trace "N=$n; V=$v\n";
 	if (lc($n) eq 'where') {
-	    while ($v =~ /\&(\w+)\&/) {
-		my $varname = $1;
-		if (%argh) {
-		    my $argval = $argh{$varname};
-		    if (!exists $argh{$varname}) {
-			$self->throw("not set $varname");
-		    }
-		    $args[$vari] = $argval;
+	    my $vari = 0;
+	    my %vari_by_name = ();
+	    my $sub =
+	      sub {
+		  my $str = shift;
+		  my $is_set = 1;
+		  while ($str =~ /(=>)?\s*\&(\w+)\&/) {
+		      my $op = $1 || '';
+		      my $varname = $2;
+		      $is_set = 0;
+		      if (%argh) {
+			  my $argval = $argh{$varname};
+			  if (!exists $argh{$varname}) {
+#			      $self->throw("not set $varname");
+			  }
+			  else {
+			      $args[$vari] = $argval;
+			      $is_set = 1;
+			  }
+		      }
+		      
+		      if (@args > $vari) {
+			  $is_set = 1;
+		      }
+		      # if var appears twice, it is already bound
+		      if (@args <= $vari &&
+			  defined($vari_by_name{$varname})) {
+			  $args[$vari] =
+			    $args[$vari_by_name{$varname}];
+		      }
+		      push(@{$vari_by_name{$varname}}, $vari);
+
+		      if ($is_set) {
+			  my $val = $args[$vari];
+			  if ($op) {
+			      $op = '= ';
+			      if ($val =~ /\%/) {
+				  $op = ' like ';
+			      }
+			  }
+			  if (ref($val)) {
+			      my $vals =
+				join(',',
+				     map {$self->dbh->quote($_)} @$val);
+			      $str =~ s/(=>)?\s*\&$varname\&/ in \($vals\)/;
+			  }
+			  else {
+			      $str =~ s/(=>)?\s*\&$varname\&/$op\?/;
+			      $vari++;
+			  }
+		      }
+		      else {
+			  $str = '';
+		      }
+		  }
+		  return $str;
+	      };
+	    my @constrs = ();
+	    while (1) {
+		my ($extracted, $remainder, $skip) =
+		  extract_bracketed($v, '[]');
+		print "($extracted, $remainder, $skip)\n";
+		$remainder =~ s/^\s+//;
+		$remainder =~ s/\s+$//;
+		
+		push(@constrs,
+		     $sub->($skip));
+		if ($extracted) {
+		    $extracted =~ s/^\s*\[//;
+		    $extracted =~ s/\]\s*$//;
+		    push(@constrs,
+			 $sub->($extracted));
 		}
-		$varh{$vari} = $varname;
-		$v =~ s/\&$varname\&/\?/;
-		$vari++;
+		else {
+		    push(@constrs,
+			 $sub->($remainder));
+		    last;
+		}
+		$v = $remainder;
 	    }
+	    @constrs = grep {$_} @constrs;
+	    $v = join(' AND ', @constrs);
+
 	}
-	$sql .= " $n $v";
+	$sql .= "$n $v\n";
     }
     return ($sql, @args);
 }
@@ -242,10 +344,123 @@ __END__
 
 =head1 SYNOPSIS
 
+  $template = $dbh->find_template("mydb-myquery");
+  $xml = $dbh->selectall_xml(-template=>$template, 
+                             -bind=>{name => "fred"});
+ 
 
 =cut
 
 =head1 DESCRIPTION
+
+A template represents a canned query that can be parameterized.
+
+Templates are collected in directories (in future it will be possible
+to store them in files or in the db itself).
+
+To tell DBStag where your templates are, you should set:
+
+  setenv DBSTAG_TEMPLATE_DIRS "$HOME/mytemplates:/data/bioconf/templates"
+
+Your templates should end with the suffix .stg
+
+A template file should contain at minimum some SQL; for example:
+
+
+=over
+
+=item Example template 1
+
+  SELECT 
+               studio.*,
+               movie.*,
+               star.*
+  FROM
+               studio NATURAL JOIN 
+               movie NATURAL JOIN
+               movie_to_star NATURAL JOIN
+               star
+  WHERE
+               [movie.genre = &genre&] [star.lastname = &lastname&]
+  USE NESTING (set(studio(movie(star))))
+
+Thats all! However, there are ways to make your template more useful
+
+
+=item Example template 2
+
+
+
+  :SELECT 
+               studio.*,
+               movie.*,
+               star.*
+  :FROM
+               studio NATURAL JOIN 
+               movie NATURAL JOIN
+               movie_to_star NATURAL JOIN
+               star
+  :WHERE
+               [movie.genre = &genre&] [star.lastname = &lastname&]
+  :USE NESTING (set(studio(movie(star))))
+
+  //
+  desc: query for fetching movies
+
+By including :s at the beginning it makes it easier for parsers to
+assemble SQL (this is not necessary for DBStag however)
+
+After the // you can add tag: value data.
+
+=back
+
+=head2 VARIABLES
+
+WHERE clause variables in the template look like this
+
+  &foo&
+
+variables are bound at query time
+
+  my $set = $dbh->selectall_stag(-template=>$t,
+                                 -bind=>["bar"]);
+
+or
+
+  my $set = $dbh->selectall_stag(-template=>$t,
+                                 -bind=>{foo=>"bar"});
+
+If the former is chosen, variables are bound from the bind list as
+they are found
+
+=head2 OPTIONAL BLOCKS
+
+  WHERE [ foo = &foo& ]
+
+If foo is not bound then the part between the square brackets is left out
+
+Multiple option blocks are ANDed together
+
+=head2 BINDING OPERATORS
+
+The operator can be bound at query time too
+
+  WHERE [ foo => &foo& ]
+
+Will become either
+
+  WHERE foo = ?
+
+or
+
+  WHERE foo LIKE ?
+
+or
+
+  WHERE foo IN (f0, f1, ..., fn)
+
+Depending on whether foo contains the % character, or if foo is bound
+to an ARRAY
 
 =head1 WEBSITE
 
