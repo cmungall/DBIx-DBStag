@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.7 2003/07/30 02:51:30 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.8 2003/08/02 20:07:21 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -618,8 +618,7 @@ sub show {
     my $t = shift;
     my $fh = shift;
     my %cscheme = %{shift || {}};
-
-    require "Term/ANSIColor.pm";
+    my $colorfunc = shift;
 
     my $n = $t->name;
     my $clauses = $t->sql_clauses;
@@ -629,7 +628,7 @@ sub show {
     my $c2 = color($cscheme{keyword});
     my $c3 = color($cscheme{block});
     sub color {
-	Term::ANSIColor::color(@_);
+	return $colorfunc->(@_);
     }
     sub keyword {
 	my $color = $cscheme{keyword};
@@ -697,7 +696,7 @@ sub show {
     }
     print $fh comment("// -- END OF TEMPLATE --\n");
     print $fh comment("=" x 60);
-    print $fh "\n";
+#    print $fh "\n";
     print $fh "$c0\n\L";
 }
 

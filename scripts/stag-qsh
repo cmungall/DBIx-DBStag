@@ -361,7 +361,7 @@ sub dshowtemplates {
 	     my $fh = shift;
 	     my $t = shift @T;
 	     return 0 unless $t;
-	     $t->show($fh, $cscheme);
+	     $t->show($fh, $cscheme, sub { Term::ANSIColor::color(@_)});
 	 });
 #    my $fn;
 #    my $fh = \*STDOUT;
@@ -527,6 +527,7 @@ sub warnmsg {
 sub welcome {
     msg("Hullo. I am the Stag God. I am also a command line interface to DBStag.");
     msg("Type ? or help if you are ever confused.\n");
+    msg("You may need to type \\x to switch out of xterm mode if it acts funny.\n");
 }
 sub make_offering {
     print "Thank you! You are very kind\n";
