@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.9 2003/05/31 01:14:53 cmungall Exp $
+# $Id: DBStag.pm,v 1.10 2003/06/06 07:39:45 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -587,7 +587,26 @@ sub policy_freshbulkload {
     $self->{_policy_freshbulkload} = shift if @_;
     return $self->{_policy_freshbulkload};
 }
-
+sub mapgroups {
+    my $self = shift;
+    if (@_) {
+        $self->{_mapgroups} = [@_];
+        $self->{_colvalmap} = {}
+          unless $self->{_colvalmap};
+        foreach my $cols (@_) {
+            my $h = {};
+            foreach (@$cols) {
+                $self->{_colvalmap}->{$_} = $h;
+            }
+        }
+    }
+    return @{$self->{_mapgroups} || []};
+}
+sub get_mapping_for_col {
+    my $self = shift;
+    my $col = shift;
+    return $self->{_colvalmap}->{$col};
+}
 
 #'(t1
 #  (foo x)
@@ -653,6 +672,11 @@ sub _storenode {
 
     my $mapping = $self->mapping || [];
 
+    # each relation has zero or one primary keys;
+    # primary keys are assumed to be single-column
+    my $pkcol = $self->get_pk_col($element);
+    trace(0, "PKCOL: $pkcol");
+
     # -- PRE-STORE CHILD NON-TERMINALS --
     # before storing this node, we need to
     # see if we first need to store any child
@@ -714,6 +738,9 @@ sub _storenode {
             my $col = $map->get_col || $self->get_pk_col($fktable);
 
             # aliases map an extra table
+            # eg table X col X.A => Y.B
+            # fktable_alias = A
+            #
             my $fktable_alias = $map->get_fktable_alias;
             my $orig_nt = $nt;
             if ($fktable_alias) {
@@ -739,6 +766,30 @@ sub _storenode {
         }
 #        $node->unset($nt->element); # clear it
     }
+    # --- done storing kids
+
+    # --- replace *IDs ---
+    my @tnodes = $node->tnodes;
+    my %remap = ();
+    foreach my $tnode (@tnodes) {
+        my $colvalmap = $self->get_mapping_for_col($tnode->name);
+        if ($colvalmap) {
+            my $v = $tnode->data;
+            my $nv = $colvalmap->{$v};
+            if ($nv) {
+                trace(0, "remapping $v => $nv");
+                $tnode->data($nv);
+            }
+            else {
+                if ($tnode->name eq $pkcol && $v =~ /^\*/) {
+                    trace(0, "will remap $pkcol: $v");
+                    $remap{$tnode->name} = $v;
+                    $node->unset($tnode->name);
+                }
+            }
+        }
+    }
+
     
     # --- Get columns that need updating/inserting ---
     # turn all remaining tag-val pairs into a hash
@@ -756,11 +807,6 @@ sub _storenode {
                 join(', ', map {"\"@refcols\""} @refcols).
                 "\n\nPerhaps you need to specify more schema metadata?");
     }
-
-    # each relation has zero or one primary keys;
-    # primary keys are assumed to be single-column
-    my $pkcol = $self->get_pk_col($element);
-    trace(0, "PKCOL: $pkcol");
 
     # each relation has zero or more unique keys;
     # unique keys may be compound (ie >1 column)
@@ -822,7 +868,8 @@ sub _storenode {
         @usets = ( [grep {$_ ne $pkcol} @cols] );
     }
     if ($pkcol) {
-        push(@usets, [$pkcol]);
+        # make single PK the first unique key set
+        unshift(@usets, [$pkcol]);
     }
 
     # -------- find update constraint by unique keys ----
@@ -861,6 +908,7 @@ sub _storenode {
         # this one is unsuitable
         next if grep { !defined($_) } values %constr;
 
+        # what if no pk???
         my $select_col = $pkcol || $uset->[0]; # use pk if possible
 
         # TEST
@@ -868,6 +916,14 @@ sub _storenode {
         # this tuple this session; and if so, what
         # the update constraint used was
         if ($is_caching_on) {
+
+            # --
+            # EXPERIMENTAL
+            #
+            # caching off for now
+            #
+            # --
+
             my %cached_colvals =
               $self->query_cache($element,
                                  \%constr,
@@ -921,6 +977,11 @@ sub _storenode {
                 # this is the value we return at the
                 # end
                 $id = $vals->[0];
+                if ($remap{$pkcol}) {
+                    my $colvalmap = $self->get_mapping_for_col($pkcol);
+                    $colvalmap->{$remap{$pkcol}} = $id;
+                    trace(0, "colvalmap $remap{$pkcol} = $id");
+                }
             }
             # we have a suitable update constraint;
             # ignore any other unique keys
@@ -965,6 +1026,14 @@ sub _storenode {
           $self->insertrow($element,
                            \%store_hash,
                            $pkcol);
+        if ($pkcol) {
+            if ($remap{$pkcol}) {
+                my $colvalmap = $self->get_mapping_for_col($pkcol);
+                $colvalmap->{$remap{$pkcol}} = $id;
+                trace(0, "colvalmap $remap{$pkcol} = $id");
+            }
+        }
+
         # -- CACHE RESULTS --
         if ($is_caching_on) {
             my %cache_hash = %store_hash;
@@ -992,11 +1061,12 @@ sub _storenode {
     if (@delayed_store) {
         foreach my $sn (@delayed_store) {
             my $fk = $pkcol;
-            trace(0, "NOW TIME TO STORE [curr pk val = $id] [fkcol = $fk] ", $sn->xml);
 
             # ASSUMPTION - FK and PK are named the same
             # WRONG????????????????
             $sn->set($fk, $id);
+
+            trace(0, "NOW TIME TO STORE [curr pk val = $id] [fkcol = $fk] ", $sn->xml);
             $self->_storenode($sn);
 
 #            my ($map) =
