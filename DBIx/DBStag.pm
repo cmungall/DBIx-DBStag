@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.6 2003/05/27 06:48:38 cmungall Exp $
+# $Id: DBStag.pm,v 1.7 2003/05/28 04:57:28 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -177,9 +177,9 @@ sub find_templates_by_schema {
     my $self = shift;
     my $schema = shift;
     my $tl = $self->template_list;
-    my @templates = grep {$_->{schema} &&
-                            $schema eq $_->{schema}} @$tl;
 
+    my @templates = grep {$_->stag_props->tmatch('schema', $schema)} @$tl;
+    
     return \@templates;
 }
 

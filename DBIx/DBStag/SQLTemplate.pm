@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.3 2003/05/27 06:48:38 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.4 2003/05/28 04:57:28 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -115,6 +115,12 @@ sub properties {
     my $self = shift;
     $self->{_properties} = shift if @_;
     return $self->{_properties};
+}
+
+sub stag_props {
+    my $self = shift;
+    $self->{_stag_props} = shift if @_;
+    return $self->{_stag_props};
 }
 
 
@@ -508,13 +514,13 @@ sub parse {
 	}
 	elsif (/^(\w+):\s*(.*)/) {
 	    push(@tags, $tag);
-	    $tag = {name=>$1, value => $2};
+	    $tag = {name=>$1, value => "$2"};
 	}
 	else {
 	    if (substr($_, -1) eq '\\') {
 	    }
 	    else {
-		$_ = "$_ ";
+		$_ = "\n$_";
 	    }
 	    $tag->{value} .= $_;
 	}
@@ -547,6 +553,12 @@ sub parse {
     }
     $self->sql_clauses(\@clauses);
     $self->properties(\@tags);
+    my $sp = Data::Stag->new(properties=>[
+					  map {
+					      [$_->{name} => $_->{value}]
+					  } @tags
+					 ]);
+    $self->stag_props($sp);
     $fh->close;
 }
 

@@ -55,8 +55,29 @@ if ($help) {
     exit 0;
 }
 
+my @C =
+  (config=>[
+	    setting=>[
+		      name => output_format,
+		      default => 'xml',
+		      allowed => 'xml',
+		      allowed => 'sxpr',
+		      allowed => 'itext',
+		     ],
+	   ]);
+
+
+my $config =
+  Data::Stag->unflatten(@C);
+
+my %confset =
+  map {
+      $_->get_name => $_->get_default
+  } $config->get_setting;
+
 my $sdbh = 
   DBIx::DBStag->new;
+my $dbh;
 my $resources = $sdbh->resources_list;
 my $resources_hash = $sdbh->resources_hash;
 my @dbresl = grep {$_->{type} eq 'rdb'} @$resources;
@@ -73,6 +94,8 @@ if (1) {
     my $screen = 'select_db';
     my %w = ();
     my $varnames = [];
+    my %exec_argh = ();
+    my $qr_obj;
 
     my $file_menu = [
                      { -label => 'Quit program',       -value => sub {exit(0)}        },
@@ -121,9 +144,10 @@ if (1) {
                        -height        => 6,
                       );
     $w2->add('label_detailwin', 'Label', 
-             -text => "ho\nhnho",
+             -text => "hello",
              -width => 60,
              -height => 4,
+	     -wrapping=>1,
             );
 
     my $button_template =
@@ -137,10 +161,19 @@ if (1) {
 
     my $button_query =
       {
-       -label => '[ Query ]',
+       -label => '[ Create Query ]',
        -value => 'query',
        -onpress=> sub {
            select_screen('query');
+       },
+      };
+
+    my $button_exec_query =
+      {
+       -label => '[ Execute Query ]',
+       -value => 'exec_query',
+       -onpress=> sub {
+	   execute_query();
        },
       };
 
@@ -162,7 +195,7 @@ if (1) {
       $w{select_db}->add(
                          'chooser_select_db', 'Listbox',
                          -height => 10,
-                         -values => [@dbnames],
+                         -values => [sort @dbnames],
                          -vscrollbar => 'right',
                          -onchange=> sub {
 #                             my $pop = shift->parent->getobj('chooser_select_db');
@@ -171,20 +204,20 @@ if (1) {
                              return;
                          },
                         );
-    $chooser_select_db->set_binding(sub {
-                                        my $pop = shift;
-                                        my $db = $pop->get_active_value;
-                                        my $res = $resources_hash->{$db};
-                                        if ($res) {
-                                            $cui->dialog("DB: $db\n".
-                                                         "LOC: $res->{loc}\n".
-                                                         "SCHENA: $res->{schema}\n");
-                                        }
-                                        else {
-                                            $cui->dialog("No data");
-                                        }
-                                    },
-                                    '?');
+#    $chooser_select_db->set_binding(sub {
+#                                        my $pop = shift;
+#                                        my $db = $pop->get;
+#                                        my $res = $resources_hash->{$db};
+#                                        if ($res) {
+#                                            $cui->dialog("DB: $db\n".
+#                                                         "LOC: $res->{loc}\n".
+#                                                         "SCHENA: $res->{schema}\n");
+#                                        }
+#                                        else {
+#                                            $cui->dialog("No data for $db");
+#                                        }
+#                                    },
+#                                    '?');
     $w{select_db}->add(undef, 'Buttonbox',
                        -y => -3,
                        -buttons => [
@@ -225,6 +258,23 @@ if (1) {
                           %args
                          );
     
+    $w{query} = $cui->add(
+                          'window_exec_query', 'Window', 
+                          -title => "Query Results",
+                          %args
+                         );
+    
+    $w{query}->add(undef, 'Buttonbox',
+		   -y => -3,
+		   -buttons => [
+				$button_exec_query,
+			       ]
+		  );
+    $w{qr} = $cui->add(
+		       'window_qr', 'Window', 
+		       -title => "Query Results",
+		       %args
+		      );
 
 
     $w{select_db}->focus;
@@ -253,10 +303,16 @@ if (1) {
             update_varwin();
             setup_query_options();
             $w{query}->intellidraw;
+	    my $detail = $w2->getobj('label_detailwin');
+	    my $sp = $template->stag_props;
+	    my $desc = $sp->get_desc;
+	    $detail->text($desc);
+	    $w2->intellidraw;
         }
         else {
             $cui->dialog("no such template $tn");
         }
+        update_varwin();
     }
 
     sub set_dbname {
@@ -276,6 +332,7 @@ if (1) {
         else {
             $cui->dialog("Unknown $dbname");
         }
+	$dbh = DBIx::DBStag->connect($dbname);
         my $w = $cui->getobj('window_select_template');
         my $chooser = $w->getobj('chooser_select_template');        
         my @tnames = map {$_->name} @$templates;
@@ -285,7 +342,7 @@ if (1) {
     sub update_varwin {
         my $label = $w1->getobj('label_varwin');
         
-        $label->text(sprintf("DBNAME:%-20s SCHEMA:%-20s\nLOC:%-20s TMPL:%-20s",
+        $label->text(sprintf("DBNAME:%-20s SCHEMA:%-20s\nLOC:%-20s    TMPL:%-20s",
                              $dbname || '', $schema, $loc,
                              $template ? $template->name : ''));
         $w1->intellidraw;
@@ -309,21 +366,51 @@ if (1) {
                          "query_label$i", 'Label',
                          -x => 1,
                          -y => $y,
-                         -width => 20,
+                         -width => 40,
                          -height => 1,
                          -bold => 1,
                       );
             $label->text($vn);
 
             replace_widg($w{query},
-                       "query_val_popup$i", 'TextEntry',
-                       -x => 32,
-                       -y => $y,
-                       -width => 20,
-                       -sbborder => 1, 
+			 "query_val_popup$i", 'TextEntry',
+			 -x => 42,
+			 -y => $y,
+			 -width => 30,
+			 -sbborder => 1, 
+                         -onchange=> sub {
+			     my $v = shift->get;
+			     $exec_argh{$vn} = $v;
+			     if (!$v) {
+				 delete $exec_argh{$vn};
+			     }
+			 }
                       );
             
         }
+    }
+    sub execute_query {
+	$qr_obj =
+	  $dbh->selectall_stag(-template=>$template,
+			       -bind=>\%exec_argh);
+	show_qr();
+    }
+    sub show_qr {
+	my $txt = $qr_obj->xml;
+	open(F, ">z");
+	print F $txt;
+	close(F);
+#	$txt = substr($txt, 0, 100);
+	replace_widg($w{qr},
+		     "qr_textviewer", "TextViewer",
+		     -sbborder=>1,
+#		     -text=>"x\ny\n z\n  123\n",
+		     -text=>$txt,
+		     -wrapping=>1,
+		     -showoverflow=>0,
+		    );
+	$w{qr}->draw;
+	$w{qr}->focus;
     }
     sub setup_complex_query_options {
         for (my $i=0; $i<10; $i++) {

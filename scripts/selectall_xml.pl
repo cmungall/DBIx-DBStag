@@ -10,12 +10,109 @@ selectall_xml.pl
 
 =head1 DESCRIPTION
 
-Example:
+This script will query a database using either SQL provided by the
+script user, or using an SQL templates; the query results will be
+turned into XML using the L<DBIx::DBStag> module. The nesting of the
+XML can be controlled by the DBStag SQL extension "USE NESTING..."
+
+=head2 EXAMPLES
+
   selectall_xml.pl -d "dbi:Pg:dbname=mydb;host=localhost"\
         "SELECT * FROM a NATURAL JOIN b"
 
 
-=head1 ARGUMENTS
+=head2 TEMPLATES
+
+A parameterized SQL template (canned query) can be used instead of
+specifying the full SQL
+
+For example:
+
+  selectall_xml.pl -d genedb /genedb-gene gene_symbol=Adh
+
+Or:
+
+  selectall_xml.pl -d genedb /genedb-gene Adh 
+
+A template is indicated by the syntactic shorthand of using a slash to
+precede the template name; in this case the template is called
+B<genedb-gene>. the -t option can also be used.
+
+All the remaining arguments are passed in as SQL template
+parameters. They can be passed in as either name=value pairs, or as a
+simple list of arguments which get passed into the template in order
+
+To use templates, you should have the environment variable
+B<DBSTAG_TEMPLATE_DIRS> set. See B<DBIx::DBStag> for details.
+
+=head1 ENVIRONMENT VARIABLES
+
+=over
+
+=item DBSTAG_DBIMAP_FILE
+
+A file containing configuration details for local databases
+
+=item DBSTAG_TEMPLATE_DIRS
+
+list of directories (seperated by B<:>s) to be searched when templates
+are requested
+
+=back
+
+=head1 COMMAND LINE ARGUMENTS
+
+=over
+
+=item -h|help
+
+shows this page
+
+=item -d|dbname DBNAME
+
+this is either a full DBI locator string (eg
+B<dbi:Pg:dbname=mydb;host=localhost>) or it can also be a shortened
+"nickname", which is then looked up in the file pointed at by the
+environment variable B<DBSTAG_DBIMAP_FILE>
+
+=item -u|user USER
+
+database user identity
+
+=item -p|password PASS
+
+database password
+
+=item -f|file SQLFILE
+
+this is a path to a file containing SQL that will be executed, as an
+alternative to writing the SQL on the command line
+
+=item -n|nesting NESTING-EXPRESSIONS
+
+a bracketed expression indicating how to the resulting objects/XML
+should be nested. See L<DBIx::DBStag> for details.
+
+=item -t|template TEMPLATE-NAME
+
+the name of a template; see above
+
+=item -w|where WHERE-CLAUSE
+
+used to override the WHERE clause of the query; useful for combining
+with templates
+
+=item -s|select SELECT-COLS
+
+used to override the SELECT clause of the query; useful for combining
+with templates
+
+=item -show
+
+will show the parse of the SQL statement
+
+=back
+
 
 =cut
 
