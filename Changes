@@ -4,3 +4,17 @@ Version 0.01
 ============
 
 2003-04-20      - Initial Release
+
+Version 0.02
+============
+
+2004-04-01      - Addition of Templates
+                - Use of double underscore to create skolem tables
+
+
+Version 0.03
+============
+
+2004-04-02      - Problem with 0.02 distribution (accidentally included blib)
+
+
