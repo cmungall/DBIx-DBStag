@@ -25,11 +25,13 @@ my $writer;
 my $verbose;
 my $color;
 my $out;
+my $sgml;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
 	   "rows"=>\$rows,
            "show"=>\$show,
+	   "sgml"=>\$sgml,
 	   "nesting|n=s"=>\$nesting,
 	   "file|f=s"=>\$file,
 	   "user|u=s"=>\$user,
@@ -50,6 +52,13 @@ GetOptions(
 if ($help && !$template_name && !$db) {
     system("perldoc $0");
     exit 0;
+}
+
+my $H = Data::Stag->getformathandler($writer || $ENV{STAG_WRITER} || 'xml');
+$H->use_color(1) if $color;
+if ($sgml) {
+    $rows = 1;
+    $H = Data::Stag->getformathandler('xml');
 }
 
 my $sql;
@@ -98,9 +107,10 @@ if ($help) {
 			   );
 	}
 	else {
-	    print "DESC: $desc\n";
+	    $desc =~ s/\n */\n  /mg;
+	    print "DESC:\n  $desc\n";
 	}
-	print "VARIABLES:\n";
+	print "PARAMETERS:\n";
 	foreach my $vn (@$varnames) {
 	    print "  $vn\n";
 	}
@@ -177,20 +187,37 @@ if ($template) {
 eval {
     if ($rows) {
         
+	my $count = 0;
         my $prep_h = $dbh->prepare_stag(@sel_args);
         my $cols = $prep_h->{cols};
         my $sth = $prep_h->{sth};
         my $exec_args = $prep_h->{exec_args};
         my $rv = $sth->execute(@$exec_args);
         while (my $r = $sth->fetchrow_arrayref) {
-	    printf "%s\n", join("\t", map {defined $_ ? $_ : '\\NULL'} @$r);
+	    if ($sgml) {
+		if (!$count) {
+		    $H->start_event('table');
+		    $H->event(title=>"Query Results");
+		    $H->start_event('tgroup');
+		    $H->event('@'=>[
+				    [cols=>scalar(@$r)]]);
+		    $H->event(thead=>[
+				      [row=>[
+					     map {[entry=>$_]} @$cols]]]);
+		    $H->start_event('tbody');
+		}
+		$H->event(row=>[map {[entry=>$_]} @$r]);
+	    }
+	    else {
+		printf "%s\n", 
+		  join("\t", map {defined $_ ? $_ : '\\NULL'} @$r);
+	    }
+	    $count++;
 	}
         
 	$dbh->disconnect;	
 	exit 0;
     }
-    my $H = Data::Stag->getformathandler($writer || $ENV{STAG_WRITER} || 'xml');
-    $H->use_color(1) if $color;
     my $fh;
     if ($out) {
 	my $fh = FileHandle->new(">$out") || die "cannot write to $out";
@@ -202,13 +229,6 @@ eval {
     my $stag = $dbh->selectall_stag(@sel_args);
     $stag->events($H);
     $fh->close if $fh;
-#    if ($writer) {
-#	my $stag = $dbh->selectall_stag(@sel_args);
-#	$xml = $stag->$writer();
-#    }
-#    else {
-#	$xml = $dbh->selectall_xml(@sel_args);
-#    }
 };
 if ($@) {
     print "FAILED\n$@";
