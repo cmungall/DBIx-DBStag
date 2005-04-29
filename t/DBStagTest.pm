@@ -10,6 +10,11 @@ BEGIN {
         skip(1, 1);
         exit 0;
     }
+    # this file defines sub connect_args()
+    unless (defined(do 'db.config')) {
+        die $@ if $@;
+        die "Could not reade db.config: $!\n";
+    }
 }
 
 use vars qw(@EXPORT);
@@ -24,10 +29,10 @@ our $driver;
 
 sub dbh {
     # this file defines sub connect_args()
-    unless (defined(do 'db.config')) {
-        die $@ if $@;
-        die "Could not reade db.config: $!\n";
-    }
+#    unless (defined(do 'db.config')) {
+#        die $@ if $@;
+#        die "Could not reade db.config: $!\n";
+#    }
     my $dbh;
     my @conn = connect_args();
 
@@ -63,13 +68,20 @@ sub alltbl {
 }
 
 sub drop {
-    unless (defined(do 'db.config')) {
-        die $@ if $@;
-        die "Could not reade db.config: $!\n";
-    }
+#    unless (defined(do 'db.config')) {
+#        die $@ if $@;
+#        die "Could not reade db.config: $!\n";
+#    }
     # this sub is defined in config file
     my $cmd = recreate_cmd();
+    $cmd =~ s/\;/\;sleep 2\;/g;
+#    if (system($cmd)) {
+#        # allowed to fail first time...
+#        # (pg sometimes won't let you create a db immediately after dropping)
+#        sleep(2);
+#    }
     if (system($cmd)) {
+        # must pass 2nd time
 	print STDERR "PROBLEM recreating using: $cmd\n";
     }
 }

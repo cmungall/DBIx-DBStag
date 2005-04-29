@@ -7,7 +7,7 @@ BEGIN {
     eval { require Test; };
     use Test;    
     use DBStagTest;
-    plan tests => 3;
+    plan tests => 4;
 }
 use DBIx::DBStag;
 use DBI;

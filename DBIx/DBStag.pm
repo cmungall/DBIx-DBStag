@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.43 2005/03/18 18:27:41 cmungall Exp $
+# $Id: DBStag.pm,v 1.44 2005/04/29 21:07:46 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1244,15 +1244,42 @@ sub _storenode {
     # keep track of nodes that have been assigned xort-style
     my %assigned_node_h;
 
-    # some nodes may have been assigned by the calling process
-    # (eg if the supernode is refered to by a fk from the current table)
+    # GET INFORMATION FROM SUPER-NODE
+    #   some nodes may have been assigned by the calling process
+    #   (eg if the supernode is refered to by a fk from the current table)
+    # this hash maps element names to a boolean;
+    # this is ONLY used in conjunction with xort-style xml
+    #  we set this when we want to make sure that an element value is 
+    #  NOT macro-expanded by the expansion code
     %assigned_node_h = %{$opt->{assigned_node_h} || {}};
 
-    my @delayed_store = ();
+    # the primary key value of the supernode
+    my $parent_pk_id = $opt->{parent_pk_id};
+    # the element type of the supernode
+    my $parent_element = $opt->{parent_element};
+    # -- end of info from super-node
+
+    # PRE-STORE
+    # look through the current node's children;
+    #  + some of these will be nodes that must be pre-stored BEFORE
+    #    the current node (because the current node has a fk to them)
+    #  + some of these will be nodes that must be post-stored AFTER
+    #    the current node (because they have an fk to the current node)
+    #
+    #  one or other of these situations must be true - otherwise
+    # nodes should not be nested!
+    my @delayed_store = ();       # keep track of non-pre-stored nodes
     foreach my $nt (@ntnodes) {
+        # First check for XORT-STYLE
         # xort-style XML; nodes can be nested inside a non-terminal
         # node corresponding to a FK column
+        # eg
+        #  <cvterm_id>
+        #    <cvterm><name>foo</name></cvterm>
+        #  </cvterm_id>
         #
+        # here, what looks like a non-terminal node should actually
+        
         # check all sub-nodes; if any of them are nonterminal and correspond
         # to a column (not a table) then add the sub-node and use the pk id
         # as the returned value
@@ -1270,13 +1297,17 @@ sub _storenode {
             if (!defined($sn_val)) {
                 $self->throw("no returned value for ".$nt->name);
             }
+            # TRANSFORM NODE: non-terminal to terminal
             # replace node with return pk ID value
             $nt->data($sn_val);
 
+            # do NOT try and expand the value assigned to this
+            # node with a xort-macro expansion later on
             $assigned_node_h{$nt->name} = 1;
             # skip this ntnode - it is now a tnode
             next;
         }
+        # -- END OF xort-style check
 
         # we want to PRE-STORE any ntnodes that
         # are required for foreign key relationships
@@ -1413,13 +1444,16 @@ sub _storenode {
         foreach my $tnode (@tnodes) {
             if ($self->is_fk_col($tnode->name) && $self->xort_mode) {
                 my $v = $tnode->data;
+
+                # -- CHECK FOR MACRO EXPANSION (XORT-STYLE) --
                 # IF this tnode was originally an ntnode that
                 # was collapsed to a pk val, xort style, do not
                 # try and map it to a previously assigned macro 
                 if ($assigned_node_h{$tnode->name}) {
                     trace(0, "ALREADY CALCULATED; not a Macro ID:$v;; in $element/".$tnode->name) if $TRACE;
+                    # DO NOTHING
                 }
-                else {
+                else {  # NOT ASSIGNED
                     my $actual_id =
                       $self->macro_id_h->{$v};
                     if (!defined($actual_id)) {
@@ -1427,6 +1461,7 @@ sub _storenode {
                     }
                     $tnode->data($actual_id);
                 }
+                # -- END OF MACRO EXPANSION --
             }
             elsif ($tnode->name eq $pkcol) {
                 my $v = $tnode->data;
@@ -1599,16 +1634,28 @@ sub _storenode {
             # skip these
             next if $self->is_pk_col($_);
             if (!defined($constr{$_})) {
-                my $colobj = $tableobj->column($_);
-                my $default_val = $colobj->default; 
-                if (defined $default_val) {
-                    # problem with DBIx::DBSchema
-                    if ($default_val =~ /^\'(.*)\'::/) {
-                        trace(0, "FIXING DEFAULT: $default_val => $1") if $TRACE;
-                        $default_val = $1;
+                if ($self->is_fk_col($_)) {
+                    # if xort-style, the container may be an
+                    # implicit foreign key
+                    
+                    # TODO: check element
+                    if ($parent_pk_id) {
+                        trace(0, "USING PARENT ELEMENT: $_ => $parent_pk_id");
+                        $constr{$_} = $parent_pk_id;
                     }
-                    $constr{$_} = $default_val; 
-                    trace(0, "USING DEFAULT $_ => $constr{$_}") if $TRACE;
+                }
+                else {
+                    my $colobj = $tableobj->column($_);
+                    my $default_val = $colobj->default; 
+                    if (defined $default_val) {
+                        # problem with DBIx::DBSchema
+                        if ($default_val =~ /^\'(.*)\'::/) {
+                            trace(0, "FIXING DEFAULT: $default_val => $1") if $TRACE;
+                            $default_val = $1;
+                        }
+                        $constr{$_} = $default_val; 
+                        trace(0, "USING DEFAULT $_ => $constr{$_}") if $TRACE;
+                    }
                 }
             }
         }
@@ -1871,28 +1918,91 @@ sub _storenode {
     if (@delayed_store) {
         foreach my $sn (@delayed_store) {
 
-            my $fk;
-            my $snname = $sn->name;
+            my $fk; # foreign key column in subtable
+            my $snname = $sn->name; # subtable name
+
+            # if a mapping is used (eg in metadata), then
+            # this takes priority
             foreach (@$mapping) {
                 if ($_->name eq 'parentfk' &&
                     $_->get_table eq $snname) {
                     $fk = $_->get_col;
                 }
             }
-            $fk = $pkcol
-              unless $fk;
 
+            # no mapping, by default use the current nodes primary 
+            # key (this assumes eg person.address_id is a fk to
+            # a table with pk address_id; we will check and possibly
+            # override this later)
+            if (!$fk) {
+                $fk = $pkcol;
+            }
 
-	    # HACK - specific to databases that use 'id' for PK
-	    # and <ftable>_id for FK
+            # HACK!!
+            # Some databases (eg GO Database) use 'id' for pk col
+            # names; fks to this table will be of form <table>_id
 	    if ($fk eq 'id') {
 		$fk = $element . '_id';
 	    }
 
+            # --SET SUBNODE FK--
+            # it is necessarily true that each delayed-store subnode
+            # must have some fk relationship back to the existing one
+            # the subnode has a fk relation up to this one;
+            # by default we assume that the subnode fk column is named
+            # the same as the current pk. However, we check that this
+            # is the case. If not, we deduce what the correct fk col is
+            my $subtable =
+              $dbschema->table($snname);
+            if ($subtable->column($fk)) {
+                # a fk col with the name as the current node pk col exists;
+                # use it
+
+                # do nothing - current value of $fk is fine
+            }
+            else {
+                # deduce actual fk column
+                # there should only be ONE subnode fk column UNSET;
+                # this implicitly refers to the current node
+                my @subcolumns = $subtable->columns;
+                my @potential_fks = ();
+                foreach my $subcolumn (@subcolumns) {
+                    if ($self->is_fk_col($subcolumn) &&
+                        !$self->is_pk_col($subcolumn)) {
+                        
+                        # Definite foreign key
+                        if (defined $sn->sget($subcolumn)) {
+                            # already set
+                        }
+                        else {
+                            push(@potential_fks, $subcolumn);
+                        }
+                    }
+                }
+                trace(0, "POTENTIAL FKS: @potential_fks");
+                if (!@potential_fks) {
+                    $self->throw("I do not know what to do with the current ".
+                                 "pl val ($id). There does not appear to be ".
+                                 "a $fk column in $snname, and all fks in ".
+                                 "the subtable $snname are currently set");
+                }
+                if (@potential_fks > 1) {
+                    $self->throw("There appear to be multiple potential fks ".
+                                 "[ @potential_fks ]. I do not know which ".
+                                 "to choose to assign the current pk val $id".
+                                 " to");
+                }
+                $fk = shift @potential_fks;
+            }
+            # -- $fk value is set
             $sn->set($fk, $id);
+            # -- $fk table assigned
 
             trace(0, "NOW TIME TO STORE [curr pk val = $id] [fkcol = $fk] ", $sn->xml) if $TRACE;
-            $self->_storenode($sn,{assigned_node_h=>{$fk=>1}});
+            # store subnode, passing in info on current node
+            $self->_storenode($sn,{parent_pk_id=>$id,
+                                   parent_element=>$element,
+                                   assigned_node_h=>{$fk=>1}});
         }
     } # -- end of @delayed_store
 

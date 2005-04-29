@@ -28,22 +28,22 @@ foreach (@kids) {
 
 my $out = $dbh->selectall_stag('SELECT * FROM agent NATURAL JOIN mission NATURAL JOIN mission_gizmo NATURAL JOIN gizmo');
 my @agents = $out->get_agent;
-ok(@agents == 1);
+ok(@agents,1);
 my $agent = shift @agents;
 my @missions = $agent->get_mission;
-ok(@missions == 2);
+ok(@missions,2);
 my @missions_with_a_car = 
   $out->where('mission',
 	      sub {
 		  grep { $_->get_gizmo_type eq 'car' } shift->find_gizmo
 	      });
-ok(@missions_with_a_car == 1);
-ok($missions[0]->get_codename eq 'goldfinger');
+ok(@missions_with_a_car,1);
+print $missions_with_a_car[0]->sxpr;
+ok($missions_with_a_car[0]->get_codename,'goldfinger');
 
-
-my $out = $dbh->selectall_stag("SELECT agent.*, bureau.*, agent.firstname || agent.lastname AS agent__fullname FROM agent NATURAL JOIN bureau_to_agent NATURAL JOIN bureau");
+$out = $dbh->selectall_stag("SELECT agent.*, bureau.*, agent.firstname || agent.lastname AS agent__fullname FROM agent NATURAL JOIN bureau_to_agent NATURAL JOIN bureau");
 
 print $out->sxpr;
-ok($out->sget_agent->sget_fullname eq 'JamesBond');
+ok($out->sget_agent->sget_fullname,'JamesBond');
 
 $dbh->disconnect;
