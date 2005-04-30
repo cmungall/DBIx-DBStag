@@ -27,6 +27,8 @@ scripts/ubiq
 t/DBStagTest.pm
 t/autoddl.t
 t/bond.t
+t/cvterm.t
+t/feature.t
 t/load-go.x
 t/movie.x
 t/norm2.t
@@ -42,7 +44,16 @@ t/store4.t
 t/store5.t
 t/template1.x
 t/tstore2.x
+t/xort-style.t
+t/data/CG10833.with-macros.chado-xml
 t/data/bond.el
+t/data/chado-cvterm.sql
+t/data/chado-feature.sql
+t/data/chado-fr.sql
+t/data/chado-pub.sql
 t/data/game.el
 t/data/mset.xml
+t/data/parts-data.xml
+t/data/parts-schema.sql
+t/data/test.chadoxml
 META.yml                                Module meta-data (added by MakeMaker)
