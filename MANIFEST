@@ -55,5 +55,7 @@ t/data/game.el
 t/data/mset.xml
 t/data/parts-data.xml
 t/data/parts-schema.sql
+t/data/relationship.chado-xml
+t/data/sofa.chado-xml
 t/data/test.chadoxml
 META.yml                                Module meta-data (added by MakeMaker)
