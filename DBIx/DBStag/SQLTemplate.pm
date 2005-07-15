@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.25 2005/02/09 19:48:54 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.26 2005/07/15 16:27:49 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -22,7 +22,7 @@ use DBIx::DBStag::Constraint;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
-$VERSION="0.07";
+$VERSION='0.08';
 
 our @CLAUSE_ORDER = ('select',
 		     'from',
@@ -396,16 +396,16 @@ sub _get_sql_where_and_args_from_hashmap {
             if ($op) {
                 $op = '= ';
                 if ($argval =~ /\%/) {
-                    $op = ' like ';
+                    $op = ' LIKE ';
                 }
             }
             my $replace_with;
             # replace arrays with IN (1,2,3,...)
             if (ref($argval)) {
                 $replace_with =
-                  join(',',
-                       map {$self->dbh->quote($_)} @$argval);
-                $op = ' in ';
+                  '('.join(',',
+                           map {_quote($_)} @$argval).')';
+                $op = ' IN ';
             }
             else {
                 $replace_with = '?';
@@ -713,6 +713,11 @@ sub show {
     }
 }
 
+sub _quote {
+    my $v = shift;
+    $v =~ s/\'/\'\'/g;
+    $v;
+}
 
 
 1;

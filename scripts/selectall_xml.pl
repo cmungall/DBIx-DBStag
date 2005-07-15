@@ -27,6 +27,7 @@ my @order;
 my $color;
 my $out;
 my $sgml;
+my $noaliases;
 my $metadata;
 my @matrixcols;
 my @matrixcells;
@@ -59,6 +60,7 @@ GetOptions(
 	   "select|s=s"=>\$select,
 	   "order=s@"=>\@order,
 	   "verbose|v"=>\$verbose,
+	   "noaliases|na"=>\$noaliases,
            "colour|color"=>\$color,
 	   "out|o=s"=>\$out,
            "metadata"=>\$metadata,
@@ -183,7 +185,7 @@ my $dbh =
 $dbh->include_metadata($metadata);
 
 my $xml;
-my @sel_args = ($sql, $nesting);
+my @sel_args = (-sql=>$sql, -nesting=>$nesting);
 if ($template) {
     if ($where) {
 	$template->set_clause(where => $where);
@@ -199,8 +201,14 @@ if ($template) {
     my %argh = ();
     while (my $arg = shift @ARGV) {
 #	print "ARG:$arg;;\n";
-	if ($arg =~ /(.*)=(.*)/) {
-	    $argh{$1} = $2;
+	if ($arg =~ /(.*)\@=(.*)/) {
+            my ($k,$v) = ($1,$2);
+            $v = [split(/\,/,$v)];
+	    $argh{$k} = $v;
+	}
+	elsif ($arg =~ /(.*)=(.*)/) {
+            my ($k,$v) = ($1,$2);
+	    $argh{$k} = $v;
 	}
 	else {
 	    push(@args, $arg);
@@ -214,7 +222,10 @@ if ($template) {
 	}
     }
     @sel_args =
-      ($template, $nesting, $bind);
+      (-template=>$template, -nesting=>$nesting, -bind=>$bind);
+}
+if ($noaliases) {
+    push(@sel_args, -noaliases=>1);
 }
 eval {
     if ($rows) {
@@ -347,6 +358,10 @@ For example:
 Or:
 
   selectall_xml.pl -d genedb /genedb-gene Adh 
+
+Or:
+
+  selectall_xml.pl -d genedb /genedb-gene gene_symbol@=Adh,dpp,bam,indy
 
 A template is indicated by the syntactic shorthand of using a slash to
 precede the template name; in this case the template is called

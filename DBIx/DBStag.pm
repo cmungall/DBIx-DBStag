@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.44 2005/04/29 21:07:46 cmungall Exp $
+# $Id: DBStag.pm,v 1.45 2005/07/15 16:27:49 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -21,7 +21,7 @@ use DBIx::DBSchema;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
-$VERSION='0.07';
+$VERSION='0.08';
 
 
 our $DEBUG;
@@ -2138,8 +2138,8 @@ sub selectall_rows {
 # ---------------------------------------
 sub selectall_stag {
     my $self = shift;
-    my ($sql, $nesting, $bind, $template, $return_arrayref, $include_metadata) = 
-      rearrange([qw(sql nesting bind template return_arrayref include_metadata)], @_);
+    my ($sql, $nesting, $bind, $template, $return_arrayref, $include_metadata, $noaliases) = 
+      rearrange([qw(sql nesting bind template return_arrayref include_metadata noaliases)], @_);
     my $prep_h = $self->prepare_stag(@_);
     my $cols = $prep_h->{cols};
     my $sth = $prep_h->{sth};
@@ -2169,7 +2169,8 @@ sub selectall_stag {
                          -rows=>$rows,
                          -cols=>$cols,
                          -alias=>$prep_h->{alias},
-                         -nesting=>$prep_h->{nesting}
+                         -nesting=>$prep_h->{nesting},
+                         -noaliases=>$noaliases,
                         );
     if ($include_metadata) {
         my ($last_sql, @sql_args) = @{$self->last_sql_and_args || []};
@@ -2193,8 +2194,8 @@ sub selectall_stag {
 
 sub prepare_stag {
     my $self = shift;
-    my ($sql, $nesting, $bind, $template, $return_arrayref) = 
-      rearrange([qw(sql nesting bind template return_arrayref)], @_);
+    my ($sql, $nesting, $bind, $template, $return_arrayref, $noaliases) = 
+      rearrange([qw(sql nesting bind template return_arrayref noaliases)], @_);
 
     my $parser = $self->parser;
 
@@ -3615,7 +3616,7 @@ sub rearrange {
   # catch user misspellings resulting in unrecognized names
   my(@restkeys) = keys %param;
   if (scalar(@restkeys) > 0) {
-       carp("@restkeys not processed in rearrange(), did you use a
+       confess("@restkeys not processed in rearrange(), did you use a
        non-recognized parameter name ? ");
   }
   return @return_array;
@@ -3982,6 +3983,9 @@ You can force different nesting using a B<double underscore>:
   SELECT blah.*, foo.*, foo.x - foo.y AS blah__z
 
 This will nest the B<z> element under the B<blah> element
+
+If you would like to override this behaviour and use the alias as the
+element name, pass in the -noaliases=>1 arg to the API call
 
 =head2 Conformance to DTD/XML-Schema
 
