@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.26 2005/07/15 16:27:49 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.27 2005/07/15 22:03:23 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -716,7 +716,7 @@ sub show {
 sub _quote {
     my $v = shift;
     $v =~ s/\'/\'\'/g;
-    $v;
+    "'$v'";
 }
 
 
