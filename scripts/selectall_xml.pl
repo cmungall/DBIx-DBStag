@@ -27,6 +27,7 @@ my @order;
 my $color;
 my $out;
 my $sgml;
+my $pre_sql;
 my $noaliases;
 my $metadata;
 my @matrixcols;
@@ -63,6 +64,7 @@ GetOptions(
 	   "noaliases|na"=>\$noaliases,
            "colour|color"=>\$color,
 	   "out|o=s"=>\$out,
+	   "pre=s"=>\$pre_sql,
            "metadata"=>\$metadata,
 	   "trace"=>\$ENV{DBSTAG_TRACE},
           );
@@ -183,6 +185,10 @@ my $dbh =
   DBIx::DBStag->connect($db, $user, $pass);
 
 $dbh->include_metadata($metadata);
+
+if ($pre_sql) {
+    $dbh->do($pre_sql);
+}
 
 my $xml;
 my @sel_args = (-sql=>$sql, -nesting=>$nesting);
@@ -458,6 +464,11 @@ sometimes it is preferable to return the results as a table rather
 than xml or a similar nested structure. specifying -rows will fetch a
 table, one line per row, and columns seperated by tabs
 
+=item -pre SQL
+
+a piece of SQL is that is executed immediately before the main query; e.g.:
+
+  -pre "SET search_path=myschema,public"
 
 =item -o|out FILE
 
