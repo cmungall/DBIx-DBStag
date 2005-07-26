@@ -70,7 +70,7 @@ my $dirstruct =
   $dbhstag->normalize(-schema=>$schema, 
                       -rows=>\@data,
                       -top=>"dirset",
-                      -noaliases=>0,
+                      -aliaspolicy=>'n',
                       -nesting=>"'(dirset(dir(movie(star(character 1)))))");
 
 print $dirstruct->sxpr;

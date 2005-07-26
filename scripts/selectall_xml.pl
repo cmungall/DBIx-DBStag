@@ -28,7 +28,7 @@ my $color;
 my $out;
 my $sgml;
 my $pre_sql;
-my $noaliases;
+my $aliaspolicy;
 my $metadata;
 my @matrixcols;
 my @matrixcells;
@@ -45,12 +45,12 @@ while (my $arg = shift @ARGV) {
 @ARGV = @ARGV2;
 GetOptions(
            "help|h"=>\$help,
-	   "db|d=s"=>\$db,
 	   "rows"=>\$rows,
            "show"=>\$show,
 	   "sgml"=>\$sgml,
 	   "nesting|n=s"=>\$nesting,
 	   "file|f=s"=>\$file,
+	   "db|d=s"=>\$db,
 	   "user|u=s"=>\$user,
 	   "pass|p=s"=>\$pass,
 	   "template|t=s"=>\$template_name,
@@ -61,7 +61,7 @@ GetOptions(
 	   "select|s=s"=>\$select,
 	   "order=s@"=>\@order,
 	   "verbose|v"=>\$verbose,
-	   "noaliases|na"=>\$noaliases,
+	   "aliaspolicy|alias=s"=>\$aliaspolicy,
            "colour|color"=>\$color,
 	   "out|o=s"=>\$out,
 	   "pre=s"=>\$pre_sql,
@@ -230,8 +230,8 @@ if ($template) {
     @sel_args =
       (-template=>$template, -nesting=>$nesting, -bind=>$bind);
 }
-if ($noaliases) {
-    push(@sel_args, -noaliases=>1);
+if ($aliaspolicy) {
+    push(@sel_args, -aliaspolicy=>$aliaspolicy);
 }
 eval {
     if ($rows) {

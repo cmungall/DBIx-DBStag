@@ -27,8 +27,8 @@ $dbh->do($ddl);
 my $chado  = Data::Stag->parse("t/data/test.chadoxml");
 $dbh->storenode($_) foreach $chado->subnodes;
 ok(1);
-my $termset =
-  $dbh->selectall_stag(q[
+my $query =
+q[
 SELECT * 
 FROM cvterm
  INNER JOIN dbxref ON (cvterm.dbxref_id = dbxref.dbxref_id)
@@ -37,12 +37,44 @@ FROM cvterm
 WHERE
  cvterm.definition LIKE '%snoRNA%'
 USE NESTING (set(cvterm(cv)(dbxref(db))))
-]);
+];
+
+my $termset =
+  $dbh->selectall_stag($query);
 print $termset->xml;
 my @terms = $termset->get_cvterm;
 ok(@terms,1);
 my $term = shift @terms;
 ok($term->sget_cv->sget_name eq 'biological_process');
 ok($term->sget_dbxref->sget_db->sget_name eq 'GO');
+
+# find parents of 'snoRNA'
+$query =
+q[
+SELECT * 
+FROM cvterm AS baseterm
+ INNER JOIN cvterm_relationship AS r ON (r.subject_id=baseterm.cvterm_id)
+ INNER JOIN cvterm AS parentterm      ON (r.object_id=parentterm.cvterm_id)
+ INNER JOIN cvterm AS rtype          ON (r.type_id=rtype.cvterm_id)
+WHERE
+ baseterm.definition LIKE '%snoRNA%'
+USE NESTING (set(baseterm(r(parentterm)(rtype))))
+];
+
+$termset =
+  $dbh->selectall_stag(-sql=>$query,
+                       -aliaspolicy=>'a');
+# TODO! CHECK!
+my @parents = $termset->get('baseterm/t/parentterm');
+
+$termset =
+  $dbh->selectall_stag(-sql=>$query,
+                       -aliaspolicy=>'t');
+# TODO! CHECK!
+$termset =
+  $dbh->selectall_stag(-sql=>$query);
+# TODO! CHECK!
+
+
 
 $dbh->disconnect;
