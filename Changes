@@ -53,5 +53,6 @@ Version 0.07
 Version 0.08
 ============
 
-2005-07-15      - [cjm] noaliases option (does not nest aliases)
+2005-07-15      - [cjm] removed noaliases option
+                        replaced with aliaspolicy
                   [cjm] fixed IN and multivalued bindings

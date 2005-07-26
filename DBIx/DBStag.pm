@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.45 2005/07/15 16:27:49 cmungall Exp $
+# $Id: DBStag.pm,v 1.46 2005/07/26 18:10:36 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -2138,8 +2138,8 @@ sub selectall_rows {
 # ---------------------------------------
 sub selectall_stag {
     my $self = shift;
-    my ($sql, $nesting, $bind, $template, $return_arrayref, $include_metadata, $noaliases) = 
-      rearrange([qw(sql nesting bind template return_arrayref include_metadata noaliases)], @_);
+    my ($sql, $nesting, $bind, $template, $return_arrayref, $include_metadata, $aliaspolicy) = 
+      rearrange([qw(sql nesting bind template return_arrayref include_metadata aliaspolicy)], @_);
     my $prep_h = $self->prepare_stag(@_);
     my $cols = $prep_h->{cols};
     my $sth = $prep_h->{sth};
@@ -2170,7 +2170,7 @@ sub selectall_stag {
                          -cols=>$cols,
                          -alias=>$prep_h->{alias},
                          -nesting=>$prep_h->{nesting},
-                         -noaliases=>$noaliases,
+                         -aliaspolicy=>$aliaspolicy,
                         );
     if ($include_metadata) {
         my ($last_sql, @sql_args) = @{$self->last_sql_and_args || []};
@@ -2194,8 +2194,8 @@ sub selectall_stag {
 
 sub prepare_stag {
     my $self = shift;
-    my ($sql, $nesting, $bind, $template, $return_arrayref, $noaliases) = 
-      rearrange([qw(sql nesting bind template return_arrayref noaliases)], @_);
+    my ($sql, $nesting, $bind, $template, $return_arrayref, $aliaspolicy) = 
+      rearrange([qw(sql nesting bind template return_arrayref aliaspolicy)], @_);
 
     my $parser = $self->parser;
 
@@ -2596,7 +2596,7 @@ sub reconstruct {
         $constraints,    # NOT USED!!!
         $nesting,           # REQUIRED - tree representing decomposed schema
         $aliasstruct,    # OPTIONAL - renaming of columns in R
-        $noaliases) =
+        $aliaspolicy) =
           rearrange([qw(schema
                         rows
                         top
@@ -2604,7 +2604,9 @@ sub reconstruct {
                         constraints
                         nesting
                         alias
-                        noaliases)], @_);
+                        aliaspolicy)], @_);
+
+    $aliaspolicy = 'nest' unless $aliaspolicy;
 
     # --- get the schema ---
     #
@@ -2713,7 +2715,7 @@ sub reconstruct {
         $aliasstruct = $tree->from('sxprstr', $aliasstruct);
     }
     my @aliases = ();
-    if ($aliasstruct && !$noaliases) {
+    if ($aliasstruct && $aliaspolicy !~ /^a/i) {
         @aliases = $aliasstruct->getnode_alias;
     }
     my %alias2baserelation =
@@ -2892,12 +2894,13 @@ sub reconstruct {
         # traverse depth first down nesting;
         # add new nodes as children of the parent
         $self->make_a_tree($tree,
-                    $top_record_h,
-		    $first_in_nesting,
-		    \%current_relation_h,
-                    \%pkey_by_relationname,
-		    \%cols_by_relationname,
-                    \%alias2baserelation);
+                           $top_record_h,
+                           $first_in_nesting,
+                           \%current_relation_h,
+                           \%pkey_by_relationname,
+                           \%cols_by_relationname,
+                           \%alias2baserelation,
+                           $aliaspolicy);
     }
     return $topstruct;
 }
@@ -2920,7 +2923,8 @@ sub make_a_tree {
     my %pkey_by_relationname = %{shift ||{}};
     my %cols_by_relationname = %{shift ||{}};
     my %alias2baserelation = %{shift ||{}};
-    
+    my $aliaspolicy = shift;
+
     my $relationname = $node->name;
     my $relationrec = $current_relation_h{$relationname};
     my $pkcols = $pkey_by_relationname{$relationname};
@@ -2976,17 +2980,30 @@ sub make_a_tree {
 	    # level of nesting
 	    my $baserelation = $alias2baserelation{$relationname};
 	    if ($baserelation) {
-#		trace(0, "R=$relationname BASE=$baserelation\n") if $TRACE;
-		my $baserelationstruct =
-		  Data::Stag->new($baserelation =>
-				  $relationstruct->data);
-		stag_add($parent_relationstruct,
-			 $relationname,
-			 [$baserelationstruct]);
+
+                # $aliaspolicy eq 'nest' or 't'
+                # nest base relations inside an alias node
+                # OR use table name in place of alias name
+                if ($aliaspolicy =~ /^t/i) {
+                    stag_add($parent_relationstruct,
+                             $baserelation,
+                             $relationstruct->data);
+                }
+                else {
+                    # nest
+                    my $baserelationstruct =
+                      Data::Stag->new($baserelation =>
+                                      $relationstruct->data);
+                    stag_add($parent_relationstruct,
+                             $relationname,
+                             [$baserelationstruct]);
+                }
 	    } else {
-		stag_add($parent_relationstruct,
-			 $relationstruct->name,
-			 $relationstruct->data);
+                # either no aliases, or $aliaspolicy eq 'a'
+                # (in which case columns already mapped to aliases)
+                stag_add($parent_relationstruct,
+                         $relationstruct->name,
+                         $relationstruct->data);
 	    }
 	    $rec =
 	      {struct=>$relationstruct,
@@ -3005,7 +3022,8 @@ sub make_a_tree {
 			   \%current_relation_h,
 			   \%pkey_by_relationname,
 			   \%cols_by_relationname,
-			   \%alias2baserelation);
+			   \%alias2baserelation,
+                           $aliaspolicy);
     }
 }
 
@@ -3985,7 +4003,8 @@ You can force different nesting using a B<double underscore>:
 This will nest the B<z> element under the B<blah> element
 
 If you would like to override this behaviour and use the alias as the
-element name, pass in the -noaliases=>1 arg to the API call
+element name, pass in the -aliaspolicy=>'a' arg to the API call. If
+you wish to use the table names without nesting, use -aliaspolicy=>'t'. 
 
 =head2 Conformance to DTD/XML-Schema
 
