@@ -7,7 +7,7 @@ BEGIN {
     eval { require Test; };
     use Test;    
     use DBStagTest;
-    plan tests => 4;
+    plan tests => 7;
 }
 use DBIx::DBStag;
 use DBI;
@@ -65,16 +65,21 @@ $termset =
   $dbh->selectall_stag(-sql=>$query,
                        -aliaspolicy=>'a');
 # TODO! CHECK!
-my @parents = $termset->get('baseterm/t/parentterm');
+my @parents = $termset->get('baseterm/r/parentterm');
+ok(@parents == 1);
 
+# TODO! CHECK!
 $termset =
   $dbh->selectall_stag(-sql=>$query,
                        -aliaspolicy=>'t');
+@parents = $termset->get('cvterm/cvterm_relationship/cvterm');
+#both child and parent are cvterm
+ok(@parents == 2);
+
 # TODO! CHECK!
 $termset =
   $dbh->selectall_stag(-sql=>$query);
-# TODO! CHECK!
-
-
+@parents = $termset->get('baseterm/cvterm/r/cvterm_relationship/parentterm/cvterm');
+ok(@parents == 1);
 
 $dbh->disconnect;
