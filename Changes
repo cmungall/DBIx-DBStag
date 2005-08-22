@@ -56,3 +56,4 @@ Version 0.08
 2005-07-15      - [cjm] removed noaliases option
                         replaced with aliaspolicy
                   [cjm] fixed IN and multivalued bindings
+2005-08-22      - [cjm] added stag-connect-params.pl
