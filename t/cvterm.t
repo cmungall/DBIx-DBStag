@@ -64,11 +64,9 @@ USE NESTING (set(baseterm(r(parentterm)(rtype))))
 $termset =
   $dbh->selectall_stag(-sql=>$query,
                        -aliaspolicy=>'a');
-# TODO! CHECK!
 my @parents = $termset->get('baseterm/r/parentterm');
 ok(@parents == 1);
 
-# TODO! CHECK!
 $termset =
   $dbh->selectall_stag(-sql=>$query,
                        -aliaspolicy=>'t');
@@ -76,7 +74,6 @@ $termset =
 #both child and parent are cvterm
 ok(@parents == 2);
 
-# TODO! CHECK!
 $termset =
   $dbh->selectall_stag(-sql=>$query);
 @parents = $termset->get('baseterm/cvterm/r/cvterm_relationship/parentterm/cvterm');

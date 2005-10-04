@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.46 2005/07/26 18:10:36 cmungall Exp $
+# $Id: DBStag.pm,v 1.47 2005/10/04 22:32:46 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1797,6 +1797,18 @@ sub _storenode {
     else {
         $operation = $this_op;
     }
+
+    if ($operation eq 'replace') {
+        # replace = delete followed by insert
+        if (%unique_constr) {
+            $self->deleterow($element,\%unique_constr);
+        }
+        else {
+            $self->throw("Cannot find row to delete it:\n".$node->xml);
+        }
+        $operation = 'insert';
+    }
+
     if ($operation eq 'update') {
         # ** UPDATE **
         if ($self->noupdate_h->{$element}) {
