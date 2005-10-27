@@ -12,6 +12,8 @@ use Getopt::Long;
 my $debug;
 my $help;
 my $db;
+my $user;
+my $pass;
 my @units;
 my $parser;
 my @mappings;
@@ -25,6 +27,8 @@ my %cache_h = ();
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
+	   "user=s"=>\$user,
+	   "pass=s"=>\$pass,
 	   "unit|u=s@"=>\@units,
            "parser|p=s"=>\$parser,
 	   "mapping|m=s@"=>\@mappings,
@@ -42,7 +46,7 @@ if ($help) {
 }
 
 #print STDERR "Connecting to $db\n";
-my $dbh = DBIx::DBStag->connect($db);
+my $dbh = DBIx::DBStag->connect($db, $user, $pass);
 eval {
     $dbh->dbh->{AutoCommit} = $autocommit || 0;
 };

@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.47 2005/10/04 22:32:46 cmungall Exp $
+# $Id: DBStag.pm,v 1.48 2005/10/27 01:20:10 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -122,7 +122,7 @@ EOM
     # HACK
     $self->dbh->{RaiseError} = 1;
     $self->dbh->{ShowErrorStatement} = 1;
-    if ($dbi =~ /dbi:(\w+)/) {
+    if ($dbi =~ /dbi:([\w\d]+)/) {
         $self->{_driver} = $1;
     }
     $self->setup;
@@ -151,7 +151,7 @@ sub resolve_dbi {
 	}
 	if ($res) {
 	    my $loc = $res->{loc};
-	    if ($loc =~ /(\w+):(\S+)\@(\S+)/) {
+	    if ($loc =~ /(\S+):(\S+)\@(\S+)/) {
 		my $dbms = $1;
 		my $dbn = $2;
 		my $host = $3;
@@ -160,7 +160,7 @@ sub resolve_dbi {
 		    $dbi = "dbi:Pg:dbname=$dbn;host=$host";
 		}
 	    } 
-	    elsif ($loc =~ /(\w+):(\S+)$/) {
+	    elsif ($loc =~ /(\S+):(\S+)$/) {
 		my $dbms = $1;
 		my $dbn = $2;
 		$dbi = "dbi:$dbms:database=$dbn";
