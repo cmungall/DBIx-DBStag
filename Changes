@@ -57,3 +57,6 @@ Version 0.08
                         replaced with aliaspolicy
                   [cjm] fixed IN and multivalued bindings
 2005-08-22      - [cjm] added stag-connect-params.pl
+2005-08-26      - [cjm] Pg insert uses SEQUENCE to fetch inserted serial pk
+                        (mysql still uses max(pk))
+

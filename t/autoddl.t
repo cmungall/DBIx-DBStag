@@ -51,6 +51,6 @@ my @dbxrefs = $out->get("game/seq/seq_dbxref/dbxref");
 ok(@dbxrefs ==1);
 ok($dbxrefs[0]->get_db eq 'x');
 
-my $out = $dbh->selectall_stag('SELECT * FROM annot NATURAL JOIN fset NATURAL JOIN fspan NATURAL JOIN game NATURAL JOIN seq NATURAL JOIN seq_dbxref NATURAL JOIN dbxref USE NESTING (annotset (annot (game(seq(seq_dbxref(dbxref)))) (fset(fspan))))');
+$out = $dbh->selectall_stag('SELECT * FROM annot NATURAL JOIN fset NATURAL JOIN fspan NATURAL JOIN game NATURAL JOIN seq NATURAL JOIN seq_dbxref NATURAL JOIN dbxref USE NESTING (annotset (annot (game(seq(seq_dbxref(dbxref)))) (fset(fspan))))');
 
 $dbh->disconnect;

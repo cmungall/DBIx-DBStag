@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.48 2005/10/27 01:20:10 cmungall Exp $
+# $Id: DBStag.pm,v 1.49 2005/12/16 17:41:56 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1868,7 +1868,7 @@ sub _storenode {
             if (!$id) {
                 # this only happens if $self->force(1) is set
                 if (@delayed_store) {
-                    confess("Insert on $element failed, this is required for storing subnodes");
+                    confess("Insert on \"$element\" did not return a primary key ID.\n Possible causes: sequence not define [Pg]?");
                 }
                 return;
             }
@@ -3162,6 +3162,7 @@ sub insertrow {
     my $self = shift;
     my ($table, $colvalh, $pkcol) = @_;
       
+    my $driver = $self->dbh->{Driver}->{Name};
     my @cols = keys %$colvalh;
     my @vals = 
       map {
@@ -3196,23 +3197,29 @@ sub insertrow {
     return unless $succeeded;
     my $pkval;
     if ($pkcol) {
+        # primary key value may have been specified in the xml
+        # (this is necessary for non-surrogate pks in tables that
+        #  are to be linked to via foreign keys)
         $pkval = $colvalh->{$pkcol};
+
+        # pk was not supplied - perhaps this is a SERIAL/AUTO_INCREMENT
+        # column (ie surrogate integer primary key)
         if (!$pkval) {
-            if (0) {
-                # POSTGRES HARDCODE ALERT
+            # assume pk is a SERIAL / AUTO_INCREMENT
+            if ($driver eq 'Pg') {
                 my $seqn = sprintf("%s_%s_seq",
                                    $table,
                                    $pkcol);
-                trace(0, "CURRVAL $seqn = $pkval") if $TRACE;
                 $pkval  = $self->selectval("select currval('$seqn')");        
+                trace(0, "CURRVAL $seqn = $pkval     [Pg]") if $TRACE;
             }
-            if (1) {
-                # THIS IS NOT TRANSACTION SAFE
-                # ONLY WORKS FOR SERIALS/AUTO-INCREMENTS
+# THIS DOES NOT WORK FOR MYSQL!!
+#            elsif ($driver eq 'mysql') {
+#                $pkval = $self->dbh->last_insert_id(undef,undef,$table,$pkcol);
+#                trace(0, "CURRVAL mysql_insert_id $pkval   [mysql]") if $TRACE;
+#            }
+            else {
                 $pkval  = $self->selectval("select max($pkcol) from $table");
-
-                # THIS DOESN'T WORK FOR POSTGRESQL:
-                #$pkval = $self->dbh->last_insert_id;
             }
         }
         trace(0, "PKVAL = $pkval") if $TRACE;

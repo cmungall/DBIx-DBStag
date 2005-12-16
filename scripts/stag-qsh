@@ -23,6 +23,7 @@ my @hist = ();
 my $XTERMMODE = 0;
 my $MLINEMODE = 0;
 my $TBLMODE = 0;
+my $PAGER = "less -fR";
 
 my $cscheme =
   {
@@ -173,6 +174,11 @@ sub shell {
 
         # : - sql tunnel and escape everything after in quotes
         if ($line =~ /^:/) {
+            if ($line =~ /\!\s*$/) {
+                $line =~ s/\!\s*$//;
+                # interpolate
+                $line = eval("\"$line\"");
+            }
             $line =~ s/^:/ sqlselect q\[/;
             $line .= ']';
         }
@@ -443,14 +449,14 @@ sub page {
     $fh->close;
     if ($XTERMMODE) {
 	my ($pfn, $pfh) = opentmp();
-	print $pfh "less -R $fn";
+	print $pfh "$PAGER $fn";
 	$pfh->close;
 	system("xterm -e sh $pfn &");
 	sleep(1);
 	unlink $pfn;
     }
     else {
-	system("less -R $fn");
+	system("$PAGER $fn");
     }
     unlink $fn;
 }
@@ -517,10 +523,13 @@ sub sqlselect {
     conn();
     if ($TBLMODE) { 
 	$rows =
-	  $dbh->selectall_rows(-sql=>$sql,
-			       -nesting=>$nesting,
-			      );
-	showrows();
+	  $dbh->selectall_arrayref($sql);
+        if ($rows) {
+            showrows();
+        }
+        else {
+            print STDERR "Query failed\n";
+        }
     }
     else {
 	$stag =
@@ -530,6 +539,10 @@ sub sqlselect {
 	showstag();
 			       
     }
+}
+sub sql {
+    my $sql = shift;
+    $dbh->do($sql);
 }
 sub hilite {
     my $cn = shift;
@@ -593,21 +606,32 @@ sub help {
 	   ' \dd MATCH      available databases containing regexp MATCH - DETAILED',
 	   ' \t [MATCH]     lists available templates (optionally matching MATCH regexp)',
 	   ' \tt [MATCH]    as above, but detailed view',
-	   ' \x             toggle pager - from inside shell to popup xterm',
+	   ' \x             toggle pager - from shell to popup xterm',
 	   ' \r             toggle queryresult mode - rows vs trees',
 	   ' \c             show resources conf file',
 	   ' d DBNAME       set the database',
 	   ' w WRITER       set the tree writer (xml, sxpr or itext)',
 	   ' t TEMPLATE     set the template',
+           ' x VARIABLE     show perl variable using Data::Dump',
+           ' trace          toggle DBSTAG_TRACE',
 	   ' \v             show template variable bindings',
 	   ' \l             toggle multi/single line mode',
 	   ' \q             QUIT',
-	   '',
+           ' :SQL           runs SQL',
 	   ' / [ARGS]       execute the template; bind using ARGS',
+	   'INTRO',
+	   'This is the dbstag interactive query shell',
+           'You can issue SQL queries or call dbstag parameterized',
+           'canned query templates here. This is also a perl interpreter',
+           '',
+           'TEMPLATED QUERIES',
+           'See DBIx::DBStag::SQLTemplate for more details',
+           'You can execute the current template using forward-slash',
+           'Use the t command to set a template by name',
+           '',
+	   'Binding to template args:',
 	   '',
-	   'Binding to template variables',
-	   '',
-	   'You can bind any variable on the command line by saying',
+	   'You can bind any template argument on the command line by saying',
 	   'VARIABLE = VALUE',
 	   '(spaces around the = are optional)',
 	   '  you do not need a $ prefix',
@@ -632,6 +656,13 @@ sub help {
 	   'SQL',
 	   ' type in any SQL SELECT statement, and the results will be turned',
 	   ' into a Stag tree and displayed as either xml, sxpr or itext',
+           ' the resulting tree goes into the $stag global variable',
+           '   You can also switch to table mode using the \\r toggle',
+           '   (in this case results go into the $rows variable)',
+           ' perl variable will not be interpolated by default - you',
+           ' can force interpolation by ending your SQL with !',
+           '           $x="foo"',
+           '           select * from bar where name=\'$x\'!',
 	   '',
 	   'Perl',
 	   ' type in any perl and it will be evaluated. don\'t use my to declare',
@@ -665,3 +696,27 @@ sub closetmp {
     $fh->close || die($fn);
     unlink($fn);
 }
+
+=head1 NAME 
+
+stag-qsh - DBStag query shell
+
+=head1 SYNOPSIS
+
+  stag-qsh
+  help
+
+=head1 DESCRIPTION
+
+This is an interactive database query shell. For a full description,
+execute this script and type 'help'
+
+=head2 ARGUMENTS
+
+=head3 -d B<DBNAME>
+
+This is either a DBI locator or the logical name of a database in the
+DBSTAG_DBIMAP_FILE config file
+
+=cut
+
