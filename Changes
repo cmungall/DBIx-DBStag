@@ -56,7 +56,17 @@ Version 0.08
 2005-07-15      - [cjm] removed noaliases option
                         replaced with aliaspolicy
                   [cjm] fixed IN and multivalued bindings
+                  [cjm] stag-storenode.pl
+                                arguments for user and password
+
 2005-08-22      - [cjm] added stag-connect-params.pl
+
 2005-08-26      - [cjm] Pg insert uses SEQUENCE to fetch inserted serial pk
                         (mysql still uses max(pk))
+
+2005-10-28      - [cjm] DB2 DBI string fixes
+                  [cjm] improvements to stag-qsh
+
+
+
 

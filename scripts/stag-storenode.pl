@@ -28,7 +28,7 @@ GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
 	   "user=s"=>\$user,
-	   "pass=s"=>\$pass,
+	   "password|pass=s"=>\$pass,
 	   "unit|u=s@"=>\@units,
            "parser|p=s"=>\$parser,
 	   "mapping|m=s@"=>\@mappings,
@@ -161,6 +161,14 @@ schema corresponding to the tags in the input data already exists.
 
 This is either a DBI locator or the logical name of a database in the
 DBSTAG_DBIMAP_FILE config file
+
+=head3 -user B<USER>
+
+db user name
+
+=head3 -password B<PASSWORD>
+
+db user password
 
 =head3 -u B<UNIT>
 

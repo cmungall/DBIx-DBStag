@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.49 2005/12/16 17:41:56 cmungall Exp $
+# $Id: DBStag.pm,v 1.50 2005/12/16 18:51:03 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -155,10 +155,16 @@ sub resolve_dbi {
 		my $dbms = $1;
 		my $dbn = $2;
 		my $host = $3;
-		$dbi = "dbi:$dbms:database=$dbn:host=$host";
 		if ($dbms =~ /pg/i) {
 		    $dbi = "dbi:Pg:dbname=$dbn;host=$host";
 		}
+		elsif ($dbms =~ /db2/i) {
+		    $dbi = "dbi:Pg:$dbn;host=$host";
+		}
+                else {
+                    # default - tested on MySQL
+                    $dbi = "dbi:$dbms:database=$dbn:host=$host";
+                }
 	    } 
 	    elsif ($loc =~ /(\S+):(\S+)$/) {
 		my $dbms = $1;
