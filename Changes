@@ -67,6 +67,7 @@ Version 0.08
 2005-10-28      - [cjm] DB2 DBI string fixes
                   [cjm] improvements to stag-qsh
 
-
+2006-03-11      - [cjm] back to using last_insert_id from mysql
+                        (now works on DBI/DBD::mysql)
 
 

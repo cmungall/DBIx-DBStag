@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.51 2006/03/11 01:26:06 cmungall Exp $
+# $Id: DBStag.pm,v 1.52 2006/03/11 01:51:43 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -3219,7 +3219,9 @@ sub insertrow {
                 $pkval  = $self->selectval("select currval('$seqn')");        
                 trace(0, "CURRVAL $seqn = $pkval     [Pg]") if $TRACE;
             }
-            # todo: check works on all mysqls
+            # this doesn't work on older
+            # versions of DBI/DBD::mysql
+            # seems to have been fixed Oct 2004 release
             elsif ($driver eq 'mysql') {
                 $pkval = $self->dbh->last_insert_id(undef,undef,$table,$pkcol);
                 trace(0, "CURRVAL mysql_insert_id $pkval   [mysql]") if $TRACE;
