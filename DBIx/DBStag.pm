@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.50 2005/12/16 18:51:03 cmungall Exp $
+# $Id: DBStag.pm,v 1.51 2006/03/11 01:26:06 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -3219,11 +3219,11 @@ sub insertrow {
                 $pkval  = $self->selectval("select currval('$seqn')");        
                 trace(0, "CURRVAL $seqn = $pkval     [Pg]") if $TRACE;
             }
-# THIS DOES NOT WORK FOR MYSQL!!
-#            elsif ($driver eq 'mysql') {
-#                $pkval = $self->dbh->last_insert_id(undef,undef,$table,$pkcol);
-#                trace(0, "CURRVAL mysql_insert_id $pkval   [mysql]") if $TRACE;
-#            }
+            # todo: check works on all mysqls
+            elsif ($driver eq 'mysql') {
+                $pkval = $self->dbh->last_insert_id(undef,undef,$table,$pkcol);
+                trace(0, "CURRVAL mysql_insert_id $pkval   [mysql]") if $TRACE;
+            }
             else {
                 $pkval  = $self->selectval("select max($pkcol) from $table");
             }
