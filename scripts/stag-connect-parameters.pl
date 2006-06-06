@@ -14,16 +14,14 @@ use Getopt::Long;
 my $h = {};
 
 my $dbname = '';
-my $connect;
 my $term;
 my @hist = ();
 
 GetOptions(
            "dbname|d=s"=>\$dbname,
-           "connect|c"=>\$connect,
           );
 
-my $db = shift;
+my $db = shift || $dbname;
 # parent dbh
 my $sdbh = 
   DBIx::DBStag->new;
@@ -47,3 +45,29 @@ else {
 
 print $pstr;
 exit 0;
+
+__END__
+
+=head1 NAME 
+
+stag-connect-parameters.pl
+
+=head1 SYNOPSIS
+
+  alias db='stag-connect-parameters.pl -d'
+  psql `db mydb`
+
+=head1 DESCRIPTION
+
+Looks up the connection parameters for a logical dbname in the metadata file pointed at by DBSTAG_DBIMAP_FILE
+
+See L<selectall_xml.pl> for more on this mapping
+
+=head2 ARGUMENTS
+
+=head3 -d B<DBNAME>
+
+This is either a DBI locator or the logical name of a database in the
+DBSTAG_DBIMAP_FILE config file
+
+=cut

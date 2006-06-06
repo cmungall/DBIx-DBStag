@@ -11,15 +11,8 @@ use Getopt::Long;
 
 my $h = {};
 
-my $dbname = '';
-my $connect;
 my $term;
 my @hist = ();
-
-GetOptions(
-           "dbname|d=s"=>\$dbname,
-           "connect|c"=>\$connect,
-          );
 
 my $match = shift;
 # parent dbh
@@ -38,3 +31,19 @@ foreach my $r (@$resources) {
     printf "%12s $ok\n", $name;
 }
 exit 0;
+
+__END__
+
+=head1 NAME 
+
+stag-check-resources.pl
+
+=head1 SYNOPSIS
+
+  stag-check-resources.pl
+
+=head1 DESCRIPTION
+
+Iterates all resources pointed at in DBSTAG_DBIMAP_FILE and determines if they are accessible or not
+
+=cut

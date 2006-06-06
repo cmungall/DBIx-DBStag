@@ -7,7 +7,7 @@ BEGIN {
     eval { require Test; };
     use Test;    
     use DBStagTest;
-    plan tests => 7;
+    plan tests => 9;
 }
 use DBIx::DBStag;
 use DBI;
@@ -78,5 +78,14 @@ $termset =
   $dbh->selectall_stag(-sql=>$query);
 @parents = $termset->get('baseterm/cvterm/r/cvterm_relationship/parentterm/cvterm');
 ok(@parents == 1);
+
+# this next test uses the new style of obo2chadoxml conversion
+my $chado  = Data::Stag->parse("t/data/test2.chadoxml");
+$dbh->storenode($_) foreach $chado->subnodes;
+ok(1);
+
+my ($genus) =
+  $dbh->selectrow_array("SELECT cvterm.name FROM cvterm_genus INNER JOIN cvterm ON (genus_id=cvterm.cvterm_id)");
+ok($genus eq 'a');
 
 $dbh->disconnect;
