@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.53 2006/06/06 01:13:12 cmungall Exp $
+# $Id: DBStag.pm,v 1.54 2006/08/05 20:26:43 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1310,6 +1310,8 @@ sub _storenode {
             # do NOT try and expand the value assigned to this
             # node with a xort-macro expansion later on
             $assigned_node_h{$nt->name} = 1;
+            trace(0, "ASSIGNED NON-MACRO ID for ".$nt->name) if $TRACE;
+
             # skip this ntnode - it is now a tnode
             next;
         }
@@ -1426,6 +1428,11 @@ sub _storenode {
             trace(0, "SETTING $element.$col=$fk_id [via ".$orig_nt->element."]") if $TRACE;
             $node->set($col, $fk_id);
             $node->unset($orig_nt->element);
+
+            # do NOT try and expand the value assigned to this
+            # node with a xort-macro expansion later on
+            $assigned_node_h{$col} = 1;
+            trace(0, "ASSIGNED NON-MACRO ID for ".$col) if $TRACE;
         }
         else {
             # 1:many between child and this
@@ -1876,7 +1883,13 @@ sub _storenode {
             if (!$id) {
                 # this only happens if $self->force(1) is set
                 if (@delayed_store) {
-                    confess("Insert on \"$element\" did not return a primary key ID.\n Possible causes: sequence not define [Pg]?");
+                    print STDERR "Insert on \"$element\" did not return a primary key ID.\n Possible causes: sequence not define [Pg]?\n";
+                    if ($self->force) {
+                        return;
+                    }
+                    else {
+                        confess("non-recoverable error");
+                    }
                 }
                 return;
             }
@@ -3195,7 +3208,7 @@ sub insertrow {
     if ($@) {
 	if ($self->force) {
 	    # what about transactions??
-	    $self->warn("IN SQL: $sql\nWARNING: $@");
+	    $self->warn("IN SQL: $sql\nWARNING: $@\n");
             return;
 	}
 	else {

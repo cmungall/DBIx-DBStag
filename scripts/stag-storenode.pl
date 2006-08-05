@@ -19,6 +19,7 @@ my $parser;
 my @mappings;
 my $mapconf;
 my @noupdate = ();
+my $force;
 my $tracenode;
 my $transform;
 my $trust_ids;
@@ -38,6 +39,7 @@ GetOptions(
            "transform|t=s"=>\$transform,
            "trust_ids=s"=>\$trust_ids,
            "cache=s%"=>\%cache_h,
+           "force"=>\$force,
            "autocommit"=>\$autocommit,
           );
 if ($help) {
@@ -66,6 +68,7 @@ if (@mappings) {
 @noupdate = map {split(/\,/,$_)} @noupdate;
 $dbh->noupdate_h({map {$_=>1} @noupdate});
 $dbh->tracenode($tracenode) if $tracenode;
+$dbh->force(1) if $force;
 
 foreach (keys %cache_h) {
     $dbh->is_caching_on($_, $cache_h{$_});
@@ -75,9 +78,20 @@ sub store {
     my $self = shift;
     my $stag = shift;
     #$dbh->begin_work;
-    $dbh->storenode($stag);
-    $dbh->commit
-      unless $autocommit;
+    eval {
+        $dbh->storenode($stag);
+        $dbh->commit
+          unless $autocommit;
+    };
+    if ($@) {
+        print STDERR $@;
+        if ($force) {
+            print STDERR "-force set, ignoring error";
+        }
+        else {
+            exit 1;
+        }
+    }
     return;
 }
 
@@ -112,7 +126,8 @@ foreach my $fn (@ARGV) {
         $H = Data::Stag->makehandler;
         $H->catch_end_sub(sub {
                               my ($handler,$stag) = @_;
-                              if ($handler->depth == 1) {
+                              if ($handler->depth == 1 &&
+                                  $stag->element ne '@') {
                                   store($handler,$stag);
                                   return;
                               }
