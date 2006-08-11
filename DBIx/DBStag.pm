@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.54 2006/08/05 20:26:43 cmungall Exp $
+# $Id: DBStag.pm,v 1.55 2006/08/11 21:38:36 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -4449,6 +4449,13 @@ person.id=23 will now point to person.id=1)
 If we were to first call $sdbh->trust_primary_key_values(1), then
 person.id would remain to be 23. This would only be appropriate
 behaviour if we were storing back into the same db we retrieved from.
+
+=head2 tracenode
+
+  Usage   - $dbh->tracenode('person/name')
+
+Traces on STDERR inserts/updates on a particular element type (table),
+displaying the sub-element (column value).
 
 =head2 is_caching_on B<ADVANCED OPTION>
 

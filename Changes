@@ -70,4 +70,11 @@ Version 0.08
 2006-03-11      - [cjm] back to using last_insert_id from mysql
                         (now works on DBI/DBD::mysql)
 
+Version 0.09
+============
+
+2006-08-08      - [cjm] XORT ID fix
+2006-08-08      - [cjm] added more docs to stag-storenode.pl - cache options
+
+
 

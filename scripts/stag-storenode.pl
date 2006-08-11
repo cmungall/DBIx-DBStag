@@ -218,6 +218,54 @@ If this flag is present, the values for primary key values are
 trusted; otherwise they are assumed to be surrogate internal IDs that
 should not be used. In this case they will be remapped.
 
+=head3 -tracenode B<TABLE/COLUMN>
+
+E.g.
+
+  -tracenode person/name
+
+Writes out a line on STDERR for every new person inserted/updated
+
+=head3 -cache B<TABLE>=B<MODE>
+
+Can be specified multiple times
+
+Example:
+
+  -cache 
+
+                   0: off (default)
+                   1: memory-caching ON
+                   2: memory-caching OFF, bulkload ON
+                   3: memory-caching ON, bulkload ON
+
+IN-MEMORY CACHING
+
+By default no in-memory caching is used. If this is set to 1,
+then an in-memory cache is used for any particular element. No cache
+management is used, so you should be sure not to cache elements that
+will cause memory overloads.
+
+Setting this will not affect the final result, it is purely an
+efficiency measure for use with storenode().
+
+The cache is indexed by all unique keys for that particular
+element/table, wherever those unique keys are set
+
+BULKLOAD
+
+If bulkload is used without memory-caching (set to 2), then only
+INSERTs will be performed for this element. Note that this could
+potentially cause a unique key violation, if the same element is
+present twice
+
+If bulkload is used with memory-caching (set to 3) then only INSERTs
+will be performed; the unique serial/autoincrement identifiers for
+those inserts will be cached and used. This means you can have the
+same element twice. However, the load must take place in one session,
+otherwise the contents of memory will be lost
+
+
 =head1 XML TO DB MAPPING
 
 See L<DBIx::DBStag> for details of the actual mapping. Two styles of
