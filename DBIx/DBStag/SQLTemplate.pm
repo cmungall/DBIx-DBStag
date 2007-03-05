@@ -1,4 +1,4 @@
-# $Id: SQLTemplate.pm,v 1.27 2005/07/15 22:03:23 cmungall Exp $
+# $Id: SQLTemplate.pm,v 1.28 2007/03/05 09:12:49 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -22,7 +22,7 @@ use DBIx::DBStag::Constraint;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
-$VERSION='0.08';
+$VERSION='0.09';
 
 our @CLAUSE_ORDER = ('select',
 		     'from',

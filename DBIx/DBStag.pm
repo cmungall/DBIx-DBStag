@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.55 2006/08/11 21:38:36 cmungall Exp $
+# $Id: DBStag.pm,v 1.56 2007/03/05 09:12:49 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -21,7 +21,7 @@ use DBIx::DBSchema;
 use Text::Balanced qw(extract_bracketed);
 #use SQL::Statement;
 use Parse::RecDescent;
-$VERSION='0.08';
+$VERSION='0.09';
 
 
 our $DEBUG;
@@ -1049,22 +1049,35 @@ sub trust_primary_key_values {
 sub make_stag_node_dbsafe {
     my $self = shift;
     my $node = shift;
+    my $parent = shift;
     my $name = $node->name;
-    return if $name eq '@'; # leave attrs alone
-    my $safename = $self->dbsafe($name);
+    # CJM 2007-03-05
+    #return if $name eq '@'; # leave attrs alone
+    if ($name eq '@') {
+        # descend into attrs
+        $parent->data([grep {$_->name ne '@'} @{$parent->data},@{$node->data}]);
+        return;
+    }
+    my $safename = $self->dbsafe($name,$parent);
     if ($name ne $safename) {
 	$node->name($safename);
     }
     my @kids = $node->kids;
     foreach (@kids) {
-	$self->make_stag_node_dbsafe($_) if ref $_;
+	$self->make_stag_node_dbsafe($_,$node) if ref $_;
     }
     return;
 }
 sub dbsafe {
     my $self = shift;
     my $name = shift;
+    my $parent = shift;
     $name = lc($name);
+    # dbstag is designed for stag-like xml; no mixed attributes
+    # however, we do have basic checks for mixed attributes
+    if ($name eq '.') {
+        $name = $parent->name.'_data'; # TODO - allow custom column
+    }
     $name =~ tr/a-z0-9_//cd;
     return $name;
 }
@@ -1149,7 +1162,7 @@ sub storenode {
     my @args = @_;
     my $dupnode = $node->duplicate;
 
-    $self->make_stag_node_dbsafe($dupnode)
+    $self->make_stag_node_dbsafe($dupnode,'')
       if $self->force_safe_node_names;
     $self->add_linking_tables($dupnode);
     $self->_storenode($dupnode,@args);
@@ -1310,7 +1323,7 @@ sub _storenode {
             # do NOT try and expand the value assigned to this
             # node with a xort-macro expansion later on
             $assigned_node_h{$nt->name} = 1;
-            trace(0, "ASSIGNED NON-MACRO ID for ".$nt->name) if $TRACE;
+            trace(0, "ASSIGNED NON-MACRO ID for ".$nt->name." TO $sn_val") if $TRACE;
 
             # skip this ntnode - it is now a tnode
             next;
@@ -1464,6 +1477,9 @@ sub _storenode {
                 # IF this tnode was originally an ntnode that
                 # was collapsed to a pk val, xort style, do not
                 # try and map it to a previously assigned macro 
+                # EXAMPLE:
+                #   we start with <foo_id><bar><key>A</></></>
+                #   we collapse too <foo_id>$v</>
                 if ($assigned_node_h{$tnode->name}) {
                     trace(0, "ALREADY CALCULATED; not a Macro ID:$v;; in $element/".$tnode->name) if $TRACE;
                     # DO NOTHING
@@ -1662,14 +1678,20 @@ sub _storenode {
                 else {
                     my $colobj = $tableobj->column($_);
                     my $default_val = $colobj->default; 
+                    my $col_type = $colobj->type;
                     if (defined $default_val) {
                         # problem with DBIx::DBSchema
                         if ($default_val =~ /^\'(.*)\'::/) {
                             trace(0, "FIXING DEFAULT: $default_val => $1") if $TRACE;
                             $default_val = $1;
                         }
+                        if (($col_type =~ /^int/ || $col_type =~ /float/) && $default_val eq '') {
+                            # this SHOULDN'T be necessary, but appears to be required for
+                            # some configuartions. DBSchema problem?
+                            $default_val=0;
+                        }
                         $constr{$_} = $default_val; 
-                        trace(0, "USING DEFAULT $_ => $constr{$_}") if $TRACE;
+                        trace(0, "USING DEFAULT[type=$col_type] $_ => \"$constr{$_}\"") if $TRACE;
                     }
                 }
             }
@@ -1869,7 +1891,7 @@ sub _storenode {
                                  join('; ',values %unique_constr)
                             )) if $TRACE;
                 if ($tracekeyval) {
-                    printf STDERR "NOCHANGE: $tracenode = $tracekeyval\n"
+                    print STDERR "NOCHANGE: $tracenode = $tracekeyval\n"
                 }
             }
         }
@@ -1923,13 +1945,13 @@ sub _storenode {
             $self->deleterow($element,\%unique_constr);
         }
         else {
-            $self->throw("Cannot find row to delete it:\n".$node->xml);
+            $self->throw("Cannot find row to delete it (perhaps unique constraint not satisfied?):\n".$node->xml);
         }
     }
     elsif ($operation eq 'lookup') {
         # lookup: do nothing, already have ID
         if (!$id) {
-            $self->throw("lookup: no ID; could not find this node in db %s:\n",$node->xml);
+            $self->throw("lookup: no ID; could not find this node in db (perhaps unique constraint not satisfied?) %s:\n",$node->xml);
         }
     }
     else {

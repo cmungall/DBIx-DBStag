@@ -25,6 +25,7 @@ my $transform;
 my $trust_ids;
 my $autocommit;
 my %cache_h = ();
+my $safe;
 GetOptions(
            "help|h"=>\$help,
 	   "db|d=s"=>\$db,
@@ -40,6 +41,7 @@ GetOptions(
            "trust_ids=s"=>\$trust_ids,
            "cache=s%"=>\%cache_h,
            "force"=>\$force,
+           "safe"=>\$safe,
            "autocommit"=>\$autocommit,
           );
 if ($help) {
@@ -69,6 +71,7 @@ if (@mappings) {
 $dbh->noupdate_h({map {$_=>1} @noupdate});
 $dbh->tracenode($tracenode) if $tracenode;
 $dbh->force(1) if $force;
+$dbh->force_safe_node_names(1) if $safe;
 
 foreach (keys %cache_h) {
     $dbh->is_caching_on($_, $cache_h{$_});
@@ -135,21 +138,6 @@ foreach my $fn (@ARGV) {
                           });
     }
     Data::Stag->parse(-format=>$parser,-file=>$fn, -handler=>$H);
-#    }
-#    else {
-#        print STDERR "WARNING! Slurping whole file into memory may be inefficient; consider -u\n";
-#        my $stag;
-#        my @pargs = (-format=>$parser,-file=>$fn);
-#        push(@pargs, -handler=>$thandler) if $thandler;
-#	$stag = Data::Stag->parse(@pargs);
-#	$dbh->storenode($stag);
-#	$dbh->commit
-#          unless $autocommit;
-#    }
-#    my @kids = $stag->kids;
-#    foreach (@kids) {
-#        $dbh->storenode($_);
-#    }
 }
 $dbh->disconnect;
 exit 0;

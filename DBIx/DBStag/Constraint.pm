@@ -1,4 +1,4 @@
-# $Id: Constraint.pm,v 1.8 2005/07/15 16:27:49 cmungall Exp $
+# $Id: Constraint.pm,v 1.9 2007/03/05 09:12:49 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2003 Chris Mungall <cjm@fruitfly.org>
@@ -18,7 +18,7 @@ use Carp;
 use DBI;
 use Data::Stag qw(:all);
 use DBIx::DBStag;
-$VERSION='0.08';
+$VERSION='0.09';
 
 
 sub DEBUG {
