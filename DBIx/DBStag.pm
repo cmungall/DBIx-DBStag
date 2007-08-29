@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.56 2007/03/05 09:12:49 cmungall Exp $
+# $Id: DBStag.pm,v 1.57 2007/08/29 09:33:45 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -151,19 +151,24 @@ sub resolve_dbi {
 	}
 	if ($res) {
 	    my $loc = $res->{loc};
-	    if ($loc =~ /(\S+):(\S+)\@(\S+)/) {
+	    if ($loc =~ /(\S+?):(\S+)\@(\S+)/) {
 		my $dbms = $1;
 		my $dbn = $2;
 		my $host = $3;
+                my $extra = '';
+                if ($host =~ /(\S+?):(.*)/) {
+                    $host = $1;
+                    $extra = ":$2";
+                }
 		if ($dbms =~ /pg/i) {
-		    $dbi = "dbi:Pg:dbname=$dbn;host=$host";
+		    $dbi = "dbi:Pg:dbname=$dbn;host=$host$extra";
 		}
 		elsif ($dbms =~ /db2/i) {
-		    $dbi = "dbi:Pg:$dbn;host=$host";
+		    $dbi = "dbi:Pg:$dbn;host=$host$extra";
 		}
                 else {
                     # default - tested on MySQL
-                    $dbi = "dbi:$dbms:database=$dbn:host=$host";
+                    $dbi = "dbi:$dbms:database=$dbn:host=$host$extra";
                 }
 	    } 
 	    elsif ($loc =~ /(\S+):(\S+)$/) {
@@ -505,7 +510,14 @@ sub get_unique_sets {
         confess("Can't get table $table from db.\n".
                 "Maybe DBIx::DBSchema does not work with your database?");
     }
-    return @{$tableobj->unique->lol_ref || []};
+    if ($ENV{OLD_DBIX_DBSCHEMA}) {
+        return @{$tableobj->unique->lol_ref || []};
+    }
+    else {
+        my %indices = $tableobj->indices;
+        my @unique_indices = grep {$_->unique} values %indices;
+        return map {$_->columns} @unique_indices;
+    }
 }
 
 sub mapconf {
@@ -1188,6 +1200,12 @@ sub _storenode {
               } @links;
             $self->linking_tables(%h);
         }
+        return;
+    }
+
+    # sql can be embedded as <_sql> tags
+    if ($element eq '_sql') {
+        $self->_execute_sqlnode($node);
         return;
     }
 
@@ -2074,6 +2092,71 @@ sub _storenode {
     }
 
     return $id;
+}
+
+# --SQL directives embedded in XML--
+
+sub _execute_sqlnode {
+    my $self = shift;
+    my $sqlnode = shift;
+    if ($sqlnode->element eq '_sql') {
+        my $dbh = $self->dbh;
+        my $op = $sqlnode->get('@/op');
+        my $col = $sqlnode->get('@/col');
+        my $table = $sqlnode->get('@/from');
+        my $match = $sqlnode->get('@/match');
+        my @subnodes = grep {$_->element ne '@'} $sqlnode->kids;
+        if ($op eq 'delete') {
+            my $pkey = $sqlnode->get('@/pkey');
+            trace(0,"deleting from $table");
+            my @vals = map {$self->_execute_sqlnode($_)} @subnodes;
+            # do iteratively rather than in 1 SQL stmt
+            if (@vals) {
+                my $sql =
+                  sprintf("SELECT $pkey FROM $table WHERE $match IN (%s)",
+                          join(", ",@vals));
+                trace(0, "SQL: $sql");
+                my $ids_to_delete = 
+                  $dbh->selectcol_arrayref($sql); # quote
+                foreach my $id (@$ids_to_delete) {
+                    my $delete_sql =
+                      "DELETE FROM $table WHERE $pkey=$id";
+                    trace(0,"SQL: $delete_sql");
+                    $dbh->do($delete_sql);
+                }
+            }
+        }
+        elsif ($op eq "select") {
+            my @vals = $sqlnode->get('.');
+            my $sql =
+              sprintf("SELECT $col FROM $table WHERE $match IN (%s)",
+                      join(", ",map {$dbh->quote($_)} @vals));
+            trace(0, "SQL: $sql");
+            my $ids = 
+              $dbh->selectcol_arrayref($sql);
+            trace(0,"id list in select: @$ids");
+            return(@$ids);
+        }
+        else {
+            $self->throw("Do not understand SQL directive: $op")
+        }
+    }
+    else {
+        return $sqlnode->data;
+    }
+    return;
+}
+
+sub _process_sql {
+    my $self = shift;
+    my $node = shift;
+    my $element = $node->element;
+    if ($element eq 'in') {
+        
+    }
+    else {
+        $self->throw("Do not understand SQL directive: $element")
+    }
 }
 
 # -- QUERYING --

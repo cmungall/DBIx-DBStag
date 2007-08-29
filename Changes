@@ -76,5 +76,9 @@ Version 0.09
 2006-08-08      - [cjm] XORT ID fix
 2006-08-08      - [cjm] added more docs to stag-storenode.pl - cache options
 
+2007-08-08      - [cjm] allowed additional DBI arguments in DBSTAG_DBIMAP_FILE
+
+2007-08-29      - [cjm] changed to DBIx::DBSchema 0.34 interface (now requires 0.34)
+
 
 

@@ -1,4 +1,4 @@
-#$Id: Makefile.PL,v 1.13 2005/02/09 19:48:49 cmungall Exp $
+#$Id: Makefile.PL,v 1.14 2007/08/29 09:33:45 cmungall Exp $
 
 
 # This Makefile.PL was cut-n-pasted from the DBIx::Abstract
@@ -129,7 +129,7 @@ WriteMakefile(
 				 'Text::Balanced'     => 0,
 				 'Data::Stag'         => '0.07',
                                  'XML::Parser::PerlSAX' => 0,
-				 'DBIx::DBSchema'     => 0,
+				 'DBIx::DBSchema'     => '0.34',
 				 'DBI'                => 0,
 				},
 	      'EXE_FILES'    => [
