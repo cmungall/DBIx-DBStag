@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.57 2007/08/29 09:33:45 cmungall Exp $
+# $Id: DBStag.pm,v 1.58 2008/02/05 23:37:50 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -1604,13 +1604,14 @@ sub _storenode {
     #            $sn->data($nu_id) if $nu_id;
     #        }
 
-    # ---- EXPERIMENTAL ----
-    # if no unique keys are provided, assume that all
-    # non-PK columns together provide a compound unique key
-    # <<DANGEROUS ASSUMPTION!!>> expedient for now!
-    if (!@usets) {
-        #        push(@usets, [grep {$_ ne $pkcol} @cols]);
-        @usets = ( [grep {$_ ne $pkcol} @cols] );
+    if (0) {
+        # ---- EXPERIMENTAL ----
+        # if no unique keys are provided, assume that all
+        # non-PK columns together provide a compound unique key
+        # <<DANGEROUS ASSUMPTION!!>> expedient for now!
+        if (!@usets) {
+            @usets = ( [grep {$_ ne $pkcol} @cols] );
+        }
     }
     if ($pkcol) {
         # make single PK the first unique key set;
