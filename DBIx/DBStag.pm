@@ -1,4 +1,4 @@
-# $Id: DBStag.pm,v 1.58 2008/02/05 23:37:50 cmungall Exp $
+# $Id: DBStag.pm,v 1.59 2008/02/06 00:50:55 cmungall Exp $
 # -------------------------------------------------------
 #
 # Copyright (C) 2002 Chris Mungall <cjm@fruitfly.org>
@@ -3293,13 +3293,15 @@ sub insertrow {
     my @cols = keys %$colvalh;
     my @vals = 
       map {
-          defined($_) ? $self->quote($colvalh->{$_}) : 'NULL'
+          defined($_) ? $colvalh->{$_} : undef
       } @cols;
+    my @placeholders = map { '?' } @vals;
     my $sql =
       sprintf("INSERT INTO %s (%s) VALUES (%s)",
               $table,
               join(", ", @cols),
-              join(", ", @vals),
+              #join(", ", @vals),
+              join(", ", @placeholders),
              );
     if (!@cols) {
 	$sql = "INSERT INTO $table DEFAULT VALUES";
@@ -3308,7 +3310,8 @@ sub insertrow {
     trace(0, "SQL:$sql") if $TRACE;
     my $succeeded = 0;
     eval {
-        my $rval = $self->dbh->do($sql);
+        my $sth = $self->dbh->prepare($sql);
+        my $rval = $sth->execute(@vals);
         $succeeded = 1 if defined $rval;
     };
     if ($@) {
