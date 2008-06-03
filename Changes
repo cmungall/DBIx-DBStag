@@ -86,6 +86,5 @@ Version 0.10
 
 2008-02-05      - [cjm] removed default assumption that entire colset can function as UC
 2008-02-05      - [cjm] use placeholders for inserts
-
-
+2008-06-03      - [cjm] added missing test file to MANIFEST
 

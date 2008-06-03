@@ -60,4 +60,5 @@ t/data/parts-schema.sql
 t/data/relationship.chado-xml
 t/data/sofa.chado-xml
 t/data/test.chadoxml
-META.yml                                Module meta-data (added by MakeMaker)
+t/data/test2.chadoxml
+META.yml                                 Module meta-data (added by MakeMaker)
