@@ -92,3 +92,6 @@ Version 0.11
 ============
 
 2009-12-14	- miration to github
+
+2010-01-21	- compensated from bug(?) in DBSchema 0.38, where default values of '' were being quoted, resulting in double quoting
+		  DBSchema 0.38 also appears to use refs for defaults. DBStag is now neutral w.r.t. version of DBSchema, it derefs if it is a reference.

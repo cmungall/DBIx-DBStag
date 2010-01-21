@@ -1709,6 +1709,14 @@ sub _storenode {
                             # some configuartions. DBSchema problem?
                             $default_val=0;
                         }
+			if (ref($default_val)) {
+			    # In new versions of DBIx::DBSchema (0.38, possibly older versions),
+			    # this appears to be a reference
+			    $default_val = $$default_val;
+			    if ($default_val eq "''") {
+				$default_val = '';
+			    }
+			}
                         $constr{$_} = $default_val; 
                         trace(0, "USING DEFAULT[type=$col_type] $_ => \"$constr{$_}\"") if $TRACE;
                     }
@@ -3732,6 +3740,12 @@ sub AUTOLOAD {
         confess("no such subroutine $name");
     }
     if ($self->dbh) {
+	if ($TRACE) { 
+	    # the following check may impair performance
+	    if (grep { ref($_) } @args) {
+		$self->throw("cannot quote @args");
+	    }
+	}
 	if ($self->dbh->can($name)) {
 	    return $self->dbh->$name(@args);
 	}
