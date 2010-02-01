@@ -18,7 +18,7 @@ use Carp;
 use DBI;
 use Data::Stag qw(:all);
 use DBIx::DBStag;
-$VERSION='0.09';
+$VERSION='0.13';
 
 
 sub DEBUG {
