@@ -269,7 +269,7 @@ perl Makefile.PL --testhost mydbserver
 
   uses the postgresql database 'test' on host mydbserver
 
-perl Makefile.PL -testdsn 'dbi:Pg:dbname=mytestdb;host=mydbserver' -mytestdbrecreate 'dropdb -h mydbserver mytestdb; createdb -h mydbserver mytestdb'
+perl Makefile.PL -testdsn 'dbi:Pg:dbname=mytestdb;host=mydbserver' -testrecreate 'dropdb -h mydbserver mytestdb; createdb -h mydbserver mytestdb'
 
   uses the postgresql database 'mytestdb' on host mydbserver
 
