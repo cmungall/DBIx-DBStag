@@ -243,10 +243,10 @@ Possible options are:
                          defaults to empty (localhost)
 
   --testdsn=<db>         Use the DBI datasource <dsn> for running the test suite
-                         defaults to $TESTDSN
+                         defaults to \$TESTDSN
 
   --testdriver=<dbms>    Use the DBD driver <db> for running the test suite
-                         defaults to $TESTDRIVER
+                         defaults to \$TESTDRIVER
                          (you may also need to change testrecreate)
 
   --testuser=<user>      Use the username <user> for running the test suite;
