@@ -118,7 +118,7 @@ __END__
 
 =head1 NAME
 
-  DBIx::DBStag::Constraint -
+DBIx::DBStag::Constraint - recursive structure for representing query constraints
 
 =head1 SYNOPSIS
 

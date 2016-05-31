@@ -333,7 +333,7 @@ __END__
 
 =head1 NAME 
 
-selectall_xml.pl
+selectall_xml.pl - Query all elements from database with an XML output
 
 =head1 SYNOPSIS
 

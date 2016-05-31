@@ -2,7 +2,7 @@
 
 =head1 NAME 
 
-  stag-autotemplate.pl
+stag-autotemplate.pl - Generates Stag SQL Templates files
 
 =head1 SYNOPSIS
 

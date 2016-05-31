@@ -2,7 +2,7 @@
 
 =head1 NAME 
 
-stag-autoddl.pl
+stag-autoddl.pl - wrapper for the Data::Stag modules
 
 =head1 SYNOPSIS
 
@@ -14,7 +14,7 @@ stag-autoddl.pl
 
 script wrapper for the Data::Stag modules
 
-=over ARGUMENTS
+=over
 
 =item -help|h
 

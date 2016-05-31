@@ -2,7 +2,7 @@
 
 =head1 NAME 
 
-selectall_html.pl
+selectall_html.pl - select all elements from database
 
 =head1 SYNOPSIS
 

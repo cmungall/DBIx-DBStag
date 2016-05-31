@@ -146,7 +146,7 @@ __END__
 
 =head1 NAME 
 
-stag-storenode.pl
+stag-storenode.pl - script is for storing data in database
 
 =head1 SYNOPSIS
 
